@@ -1,0 +1,5 @@
+# OCP 관리도구 (octools) - UI 의존성 (Windows)
+# pip install -r requirements-ui.txt
+
+streamlit==1.28.2
+requests==2.31.0

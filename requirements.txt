@@ -1,0 +1,6 @@
+# OCP 관리도구 (octools) - 서버 의존성 (Linux)
+# pip install -r requirements.txt
+
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.2
