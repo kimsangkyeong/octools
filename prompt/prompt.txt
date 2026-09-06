@@ -23,9 +23,11 @@
 |------------|-------------------------|-------------------------------------------------------------|
 | ocptools   | prompt/ocptools.md      | OCP/Podman/Network 운영 명령어 학습형 통합 CLI (단일 shell) |
 | ocpcatalog | prompt/ocpcatalog.md    | OCP release/operator 카탈로그 조회 + 업그레이드 영향도 분석 (ocp_list.sh) |
+| m2d        | prompt/m2d.md           | oc-mirror --v2 로 인터넷망 이미지를 로컬 디스크로 미러링 (m2d.sh) |
+| d2m        | prompt/d2m.md           | oc-mirror --v2 로 디스크 파일을 private registry로 미러링 (d2m.sh) |
 
 [공통 개발 규칙 - 최초 요청 시 사용자가 지정]
 - 요구사항문서 + 목표 아키텍처/설계서 작성 (표/차트/플로우 포함).
 - 오류 수정 또는 신규 요구사항 발생 시 문서와 프로그램 모두 리비전.
-- 문서 산출물은 md 2가지로 작성.
+- 문서 산출물은 md 로 작성.
 - 프로그램 언어는 bash, python 사용.
