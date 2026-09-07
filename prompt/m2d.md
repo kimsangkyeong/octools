@@ -40,3 +40,18 @@ d2m 은 private registry 인증이 필요해 ${XDG_RUNTIME_DIR}/containers/auth.
 - run_mirror: --authfile 지정 시 REGISTRY_AUTH_FILE 만 unset, 미지정 시 XDG_RUNTIME_DIR 세팅 추가.
 - validate_env: --authfile 지정 시 파일 필수, 미지정 시 XDG auth.json 경고. print_warn 헬퍼 추가.
 - print_information/usage/매뉴얼 반영. m2d.sh v1.1, 매뉴얼 v1.1.
+
+---
+
+=============== [m2d] #003 2026-09-07
+[작업자: Kiro]
+
+색깔 정의는 유지하되, 출력물은 C_BOLD 로 모두 처리해줘. 향후 실행하면서 필요 시 색깔 수정하도록 할께.
+
+[반영 내용]
+- m2d.sh: 색상 코드 정의(C_RED/C_GREEN/C_YELLOW/C_CYAN/C_BOLD 등)는 그대로 유지.
+- m2d.sh: print_error/print_warn/print_info/print_ok 출력을 C_BOLD 로 통일.
+- m2d.sh: Information 블록(헤더/구분선/실행 명령어 라인)의 C_CYAN/C_YELLOW 를 C_BOLD 로 변경.
+- 문법(bash -n) 통과, 출력 경로에 남은 색상 코드 없음 확인.
+- docs/m2d_manual.md: '9. 화면 출력(색상) 처리' 섹션 추가, 이후 섹션 재번호, 변경이력/문서버전 v1.2 갱신.
+- m2d.sh v1.2, 매뉴얼 v1.2.

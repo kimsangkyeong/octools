@@ -21,6 +21,11 @@
 ##                                              tcpdump 명령 추가,
 ##                                              curl --resolve 멀티IP/커스텀포트 보완 및
 ##                                              --connect-to(host:port:host:port) 메뉴 추가
+##  1.2       2026.09.07       k.s.k & kiro     (1) private registry 주소 입력 시 기본 참고정보
+##                                                  (DEFAULT_REGISTRY=ocprgst.bss.skt:5000)를 제시하고,
+##                                                  엔터만 누르면 기본값으로 처리하도록 개선
+##                                                  (podman login/catalog/tags/delete_tag 프롬프트).
+##                                              (2) 화면 출력을 C_BOLD 로 통일(색상 정의는 유지, 가독성 문제 회피)
 ##
 ####################################################################################################
 
@@ -46,6 +51,10 @@ C_BOLD='\033[1m'        ; C_RESET='\033[0m'
 
 # 성능용 메타파일 저장 폴더 (프로그램 종료 시 삭제)
 META_DIR="${PWD}/.ocptools"
+
+# private registry 기본 참고정보 (레지스트리 주소 입력 시 기본값으로 제시)
+# 입력 프롬프트에서 이 값을 참고정보로 보여주고, 엔터만 누르면 이 값을 사용한다.
+DEFAULT_REGISTRY="ocprgst.bss.skt:5000"
 
 # 메뉴 화면 레이아웃 설정
 ITEMS_PER_COL=10        # 한 열에 표시할 최대 항목 수
@@ -144,7 +153,7 @@ get_term_width()
 pause_enter()
 {
   echo ""
-  printf "  ${C_CYAN}[Enter] 계속...${C_RESET}"
+  printf "  ${C_BOLD}[Enter] 계속...${C_RESET}"
   read -r _dummy || return 0
 }
 
@@ -158,7 +167,7 @@ print_title()
   local title="$1"
   clear
   print_line "="
-  printf "${C_BOLD}${C_BLUE}  %s${C_RESET}\n" "${title}"
+  printf "${C_BOLD}  %s${C_RESET}\n" "${title}"
   print_line "="
   echo ""
 }
@@ -173,7 +182,7 @@ show_exec_cmd()
 {
   local cmd="$1"
   echo ""
-  printf "${C_BOLD}${C_YELLOW}[실행문: %s]${C_RESET}\n" "${cmd}"
+  printf "${C_BOLD}[실행문: %s]${C_RESET}\n" "${cmd}"
   print_line "-"
 }
 
@@ -186,7 +195,7 @@ confirm_run()
 {
   local msg="${1:-이 명령을 실행하시겠습니까?}"
   local ans
-  printf "${C_RED}  %s (y/N): ${C_RESET}" "${msg}"
+  printf "${C_BOLD}  %s (y/N): ${C_RESET}" "${msg}"
   read -r ans
   case "${ans}" in
     y|Y|yes|YES) return 0 ;;
@@ -216,7 +225,7 @@ run_cmd()
   local rc=$?
   echo ""
   if [ ${rc} -ne 0 ]; then
-    printf "${C_RED}  (종료코드: %s) 명령 실행 중 오류가 발생했거나 결과가 없습니다.${C_RESET}\n" "${rc}"
+    printf "${C_BOLD}  (종료코드: %s) 명령 실행 중 오류가 발생했거나 결과가 없습니다.${C_RESET}\n" "${rc}"
   fi
   return ${rc}
 }
@@ -235,9 +244,9 @@ ask_input()
   local input
 
   if [ -n "${defval}" ]; then
-    printf "  ${C_WHITE}%s [기본: %s]: ${C_RESET}" "${prompt}" "${defval}"
+    printf "  ${C_BOLD}%s [기본: %s]: ${C_RESET}" "${prompt}" "${defval}"
   else
-    printf "  ${C_WHITE}%s: ${C_RESET}" "${prompt}"
+    printf "  ${C_BOLD}%s: ${C_RESET}" "${prompt}"
   fi
   read -r input
   [ -z "${input}" ] && input="${defval}"
@@ -253,7 +262,7 @@ check_cmd_exist()
 {
   local c="$1"
   if ! command -v "${c}" >/dev/null 2>&1; then
-    printf "${C_RED}  [%s] 명령을 찾을 수 없습니다. 설치 또는 PATH를 확인하세요.${C_RESET}\n" "${c}"
+    printf "${C_BOLD}  [%s] 명령을 찾을 수 없습니다. 설치 또는 PATH를 확인하세요.${C_RESET}\n" "${c}"
     return 1
   fi
   return 0
@@ -280,8 +289,8 @@ check_oc_login()
   fi
 
   echo ""
-  printf "${C_RED}  oc 로그인이 되어 있지 않습니다.${C_RESET}\n"
-  printf "${C_YELLOW}  아래 방법으로 먼저 로그인하세요:${C_RESET}\n"
+  printf "${C_BOLD}  oc 로그인이 되어 있지 않습니다.${C_RESET}\n"
+  printf "${C_BOLD}  아래 방법으로 먼저 로그인하세요:${C_RESET}\n"
   echo "    1) 사용자/비밀번호 : oc login https://<api-server>:6443 -u <user> -p <pass>"
   echo "    2) 토큰 사용        : oc login --token=<token> --server=https://<api-server>:6443"
   echo ""
@@ -333,12 +342,12 @@ render_paged_menu()
     if [ -z "${ltext}" ] && [ -z "${rtext}" ]; then
       continue
     fi
-    printf "${C_WHITE}%-${col_width}s${C_RESET}| ${C_WHITE}%s${C_RESET}\n" "${ltext}" "${rtext}"
+    printf "${C_BOLD}%-${col_width}s${C_RESET}| ${C_BOLD}%s${C_RESET}\n" "${ltext}" "${rtext}"
   done
 
   echo ""
   print_line "-"
-  printf "${C_CYAN}  페이지 %d/%d  |  [n]다음 [p]이전 [b]뒤로 [q]종료  |  번호 입력 후 Enter${C_RESET}\n" \
+  printf "${C_BOLD}  페이지 %d/%d  |  [n]다음 [p]이전 [b]뒤로 [q]종료  |  번호 입력 후 Enter${C_RESET}\n" \
          "$(( page + 1 ))" "${total_pages}"
   print_line "-"
 }
@@ -361,7 +370,7 @@ select_from_list()
   while true; do
     render_paged_menu "${title}" "${page}"
     echo ""
-    printf "  ${C_WHITE}선택: ${C_RESET}"
+    printf "  ${C_BOLD}선택: ${C_RESET}"
     # read 가 EOF(입력 종료)를 만나면 종료로 처리하여 무한 루프를 방지한다.
     if ! read -r input; then
       return 2
@@ -404,8 +413,8 @@ select_oc_resource()
   local choice picked
 
   echo ""
-  printf "  ${C_CYAN}%s 를 선택하는 방법: [1] 목록에서 선택  [2] 직접 입력  [b] 취소${C_RESET}\n" "${rtype}"
-  printf "  ${C_WHITE}선택: ${C_RESET}"
+  printf "  ${C_BOLD}%s 를 선택하는 방법: [1] 목록에서 선택  [2] 직접 입력  [b] 취소${C_RESET}\n" "${rtype}"
+  printf "  ${C_BOLD}선택: ${C_RESET}"
   read -r choice
 
   case "${choice}" in
@@ -426,7 +435,7 @@ select_oc_resource()
       local names
       names=$(eval "oc get ${rtype} ${ns_opt} -o custom-columns=NAME:.metadata.name --no-headers 2>/dev/null")
       if [ -z "${names}" ]; then
-        printf "${C_RED}  %s 목록을 가져올 수 없습니다. 직접 입력으로 전환합니다.${C_RESET}\n" "${rtype}"
+        printf "${C_BOLD}  %s 목록을 가져올 수 없습니다. 직접 입력으로 전환합니다.${C_RESET}\n" "${rtype}"
         ask_input "${rtype} 이름 입력" picked ""
         [ -z "${picked}" ] && return 1
         eval "${__resultvar}=\"\${picked}\""
@@ -462,8 +471,8 @@ select_namespace()
   local choice picked
 
   echo ""
-  printf "  ${C_CYAN}Namespace: [0] 전체(-A)  [1] 목록선택  [2] 직접입력  [b] 취소${C_RESET}\n"
-  printf "  ${C_WHITE}선택: ${C_RESET}"
+  printf "  ${C_BOLD}Namespace: [0] 전체(-A)  [1] 목록선택  [2] 직접입력  [b] 취소${C_RESET}\n"
+  printf "  ${C_BOLD}선택: ${C_RESET}"
   read -r choice
 
   case "${choice}" in
@@ -682,8 +691,8 @@ h_ocget_free()
   [ -z "${rtype}" ] && return 1
 
   echo ""
-  printf "  ${C_CYAN}namespace 스코프 리소스입니까? [y] 예(NS선택)  [N] 아니오(클러스터)${C_RESET}\n"
-  printf "  ${C_WHITE}선택: ${C_RESET}"
+  printf "  ${C_BOLD}namespace 스코프 리소스입니까? [y] 예(NS선택)  [N] 아니오(클러스터)${C_RESET}\n"
+  printf "  ${C_BOLD}선택: ${C_RESET}"
   local scope
   read -r scope
   if [ "${scope}" = "y" ] || [ "${scope}" = "Y" ]; then
@@ -819,8 +828,8 @@ h_rsync()
   [ $? -ne 0 ] && return 1
 
   echo ""
-  printf "  ${C_CYAN}방향: [1] Pod->로컬(다운로드)  [2] 로컬->Pod(업로드)${C_RESET}\n"
-  printf "  ${C_WHITE}선택: ${C_RESET}"
+  printf "  ${C_BOLD}방향: [1] Pod->로컬(다운로드)  [2] 로컬->Pod(업로드)${C_RESET}\n"
+  printf "  ${C_BOLD}선택: ${C_RESET}"
   read -r direction
 
   if [ "${direction}" = "2" ]; then
@@ -925,7 +934,7 @@ h_podman_login()
 {
   local reg user
   check_cmd_exist "podman" || { pause_enter; return 1; }
-  ask_input "레지스트리 주소 (예: registry.example.com:5000)" reg ""
+  ask_input "레지스트리 주소 (엔터 시 기본값 사용)" reg "${DEFAULT_REGISTRY}"
   [ -z "${reg}" ] && return 1
   ask_input "사용자명" user ""
   # 비밀번호는 podman 이 대화형으로 안전하게 입력받도록 --password-stdin 대신 프롬프트 사용
@@ -947,13 +956,13 @@ h_podman_catalog()
 {
   local reg auth mode nval
   check_cmd_exist "curl" || { pause_enter; return 1; }
-  ask_input "레지스트리 주소 (예: registry.example.com:5000)" reg ""
+  ask_input "레지스트리 주소 (엔터 시 기본값 사용)" reg "${DEFAULT_REGISTRY}"
   [ -z "${reg}" ] && return 1
   ask_input "인증 옵션(선택, 예: -u user:pass)" auth ""
 
   echo ""
-  printf "  ${C_CYAN}조회 방식: [1] 전체 목록(권장)  [2] 개수 지정(n)  [3] 기본 조회${C_RESET}\n"
-  printf "  ${C_WHITE}선택: ${C_RESET}"
+  printf "  ${C_BOLD}조회 방식: [1] 전체 목록(권장)  [2] 개수 지정(n)  [3] 기본 조회${C_RESET}\n"
+  printf "  ${C_BOLD}선택: ${C_RESET}"
   read -r mode
 
   local jq_filter="cat"
@@ -978,7 +987,7 @@ h_podman_catalog()
       show_exec_cmd "curl -sk ${auth} 'https://${reg}/v2/_catalog?n=1000' (Link 헤더가 있으면 ?last=<마지막repo> 로 반복)"
 
       if ! command -v jq >/dev/null 2>&1; then
-        printf "${C_YELLOW}  [참고] jq 미설치: 페이지 자동 병합이 제한됩니다. n=100000 로 일괄 조회합니다.${C_RESET}\n"
+        printf "${C_BOLD}  [참고] jq 미설치: 페이지 자동 병합이 제한됩니다. n=100000 로 일괄 조회합니다.${C_RESET}\n"
         run_cmd "curl -sk ${auth} 'https://${reg}/v2/_catalog?n=100000'"
         pause_enter
         return 0
@@ -1021,7 +1030,7 @@ h_podman_catalog()
 
       local total
       total=$(grep -c . "${all_file}" 2>/dev/null)
-      printf "${C_BOLD}${C_CYAN}  전체 repository 수: %s${C_RESET}\n" "${total:-0}"
+      printf "${C_BOLD}  전체 repository 수: %s${C_RESET}\n" "${total:-0}"
       print_line "-"
       sort "${all_file}" 2>/dev/null
       pause_enter
@@ -1038,7 +1047,7 @@ h_podman_tags()
 {
   local reg repo auth
   check_cmd_exist "curl" || { pause_enter; return 1; }
-  ask_input "레지스트리 주소 (예: registry.example.com:5000)" reg ""
+  ask_input "레지스트리 주소 (엔터 시 기본값 사용)" reg "${DEFAULT_REGISTRY}"
   [ -z "${reg}" ] && return 1
   ask_input "이미지(저장소) 경로 (예: openshift/ose-cli)" repo ""
   [ -z "${repo}" ] && return 1
@@ -1146,7 +1155,7 @@ h_podman_delete_tag()
 {
   local reg repo tag auth digest
   check_cmd_exist "curl" || { pause_enter; return 1; }
-  ask_input "레지스트리 주소 (예: registry.example.com:5000)" reg ""
+  ask_input "레지스트리 주소 (엔터 시 기본값 사용)" reg "${DEFAULT_REGISTRY}"
   ask_input "이미지(저장소) 경로 (예: openshift/ose-cli)" repo ""
   ask_input "삭제할 태그 (예: v1.0)" tag ""
   ask_input "인증 옵션(선택, 예: -u user:pass)" auth ""
@@ -1161,7 +1170,7 @@ h_podman_delete_tag()
            | tr -d '\r' | awk -F': ' '/[Dd]ocker-[Cc]ontent-[Dd]igest/ {print $2}')
 
   if [ -z "${digest}" ]; then
-    printf "${C_RED}  digest 를 조회하지 못했습니다. (레지스트리 삭제 활성화 여부/권한 확인)${C_RESET}\n"
+    printf "${C_BOLD}  digest 를 조회하지 못했습니다. (레지스트리 삭제 활성화 여부/권한 확인)${C_RESET}\n"
     pause_enter
     return 1
   fi
@@ -1262,7 +1271,7 @@ h_ncat()
   elif command -v nc >/dev/null 2>&1; then
     ncbin="nc"
   else
-    printf "${C_RED}  ncat/nc 를 찾을 수 없습니다.${C_RESET}\n"; pause_enter; return 1
+    printf "${C_BOLD}  ncat/nc 를 찾을 수 없습니다.${C_RESET}\n"; pause_enter; return 1
   fi
 
   ask_input "대상 호스트 (예: 10.0.0.10)" host ""
@@ -1270,8 +1279,8 @@ h_ncat()
   [ -z "${host}" ] && return 1
   [ -z "${port}" ] && return 1
   echo ""
-  printf "  ${C_CYAN}모드: [1] 포트 오픈 확인(-z -v)  [2] 배너/응답 확인(대화형)${C_RESET}\n"
-  printf "  ${C_WHITE}선택: ${C_RESET}"
+  printf "  ${C_BOLD}모드: [1] 포트 오픈 확인(-z -v)  [2] 배너/응답 확인(대화형)${C_RESET}\n"
+  printf "  ${C_BOLD}선택: ${C_RESET}"
   read -r mode
   if [ "${mode}" = "2" ]; then
     run_cmd "${ncbin} -v ${host} ${port}"
@@ -1333,7 +1342,7 @@ h_tcpdump()
   local tdbin iface host port cnt extra filter save wfile
   # tcpdump 존재 확인
   if ! command -v tcpdump >/dev/null 2>&1; then
-    printf "${C_RED}  tcpdump 를 찾을 수 없습니다. 설치가 필요합니다. (예: dnf install -y tcpdump)${C_RESET}\n"
+    printf "${C_BOLD}  tcpdump 를 찾을 수 없습니다. 설치가 필요합니다. (예: dnf install -y tcpdump)${C_RESET}\n"
     pause_enter
     return 1
   fi
@@ -1341,8 +1350,8 @@ h_tcpdump()
 
   # 인터페이스 선택: NIC 목록에서 선택하거나 any/직접입력
   echo ""
-  printf "  ${C_CYAN}인터페이스: [1] 목록에서 선택  [2] any(전체)  [3] 직접 입력${C_RESET}\n"
-  printf "  ${C_WHITE}선택: ${C_RESET}"
+  printf "  ${C_BOLD}인터페이스: [1] 목록에서 선택  [2] any(전체)  [3] 직접 입력${C_RESET}\n"
+  printf "  ${C_BOLD}선택: ${C_RESET}"
   local ich
   read -r ich
   case "${ich}" in
@@ -1382,8 +1391,8 @@ h_tcpdump()
 
   # 파일 저장 여부
   echo ""
-  printf "  ${C_CYAN}결과 저장: [1] 화면 출력(기본)  [2] pcap 파일로 저장(-w)${C_RESET}\n"
-  printf "  ${C_WHITE}선택: ${C_RESET}"
+  printf "  ${C_BOLD}결과 저장: [1] 화면 출력(기본)  [2] pcap 파일로 저장(-w)${C_RESET}\n"
+  printf "  ${C_BOLD}선택: ${C_RESET}"
   read -r save
   wfile=""
   if [ "${save}" = "2" ]; then
@@ -1401,14 +1410,14 @@ h_tcpdump()
 
   # 위험/장시간 실행 가능성 -> confirm. (무제한 캡처는 Ctrl+C 로 중단)
   if [ -z "${cnt_opt}" ]; then
-    printf "${C_YELLOW}  참고: 패킷 개수 무제한입니다. 중단하려면 Ctrl+C 를 누르세요.${C_RESET}\n"
+    printf "${C_BOLD}  참고: 패킷 개수 무제한입니다. 중단하려면 Ctrl+C 를 누르세요.${C_RESET}\n"
   fi
   run_cmd "${cmd}" "Y"
 
   if [ -n "${wfile}" ]; then
     echo ""
-    printf "${C_GREEN}  저장 완료(있는 경우): %s${C_RESET}\n" "${wfile}"
-    printf "  ${C_CYAN}저장 파일 분석 예: tcpdump -nn -r %s${C_RESET}\n" "${wfile}"
+    printf "${C_BOLD}  저장 완료(있는 경우): %s${C_RESET}\n" "${wfile}"
+    printf "  ${C_BOLD}저장 파일 분석 예: tcpdump -nn -r %s${C_RESET}\n" "${wfile}"
   fi
   pause_enter
 }
@@ -1517,7 +1526,7 @@ h_nic_down()
   check_cmd_exist "ip" || { pause_enter; return 1; }
   select_nic nic
   [ $? -ne 0 ] && return 1
-  printf "${C_RED}  주의: 원격 접속 중인 인터페이스를 DOWN 하면 세션이 끊길 수 있습니다.${C_RESET}\n"
+  printf "${C_BOLD}  주의: 원격 접속 중인 인터페이스를 DOWN 하면 세션이 끊길 수 있습니다.${C_RESET}\n"
   run_cmd "sudo ip link set ${nic} down" "Y"
   pause_enter
 }
@@ -1573,7 +1582,7 @@ show_command_submenu()
         # 실행 전 설명 표시 (학습 지원)
         print_title "${CAT_LABEL[${catid}]} > ${CMD_META[${sel_id}|label]}"
         if [ -n "${desc}" ]; then
-          printf "  ${C_CYAN}설명: %s${C_RESET}\n" "${desc}"
+          printf "  ${C_BOLD}설명: %s${C_RESET}\n" "${desc}"
         fi
 
         # handler 문자열(함수명 + 인자)을 그대로 eval 호출
@@ -1638,8 +1647,8 @@ preflight_check()
     command -v "${c}" >/dev/null 2>&1 || missing="${missing} ${c}"
   done
   if [ -n "${missing}" ]; then
-    printf "${C_YELLOW}  [참고] 다음 도구가 설치되어 있지 않습니다:%s${C_RESET}\n" "${missing}"
-    printf "${C_YELLOW}         관련 메뉴 사용 시 설치가 필요합니다.${C_RESET}\n"
+    printf "${C_BOLD}  [참고] 다음 도구가 설치되어 있지 않습니다:%s${C_RESET}\n" "${missing}"
+    printf "${C_BOLD}         관련 메뉴 사용 시 설치가 필요합니다.${C_RESET}\n"
     echo ""
     sleep 1
   fi

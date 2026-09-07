@@ -59,3 +59,24 @@ signal 처리의 로그는 $HOME/tmp 폴더아래에 log가 저장되도록 작�
 1. registry catalog 조회 시에는 전체 catalog 목록을 추가하도록 수정해줘.
 2. 명령어로 tcpdump 를 추가해줘
 3. curl --resolve 옵션처리할 때 host:port:ip 형식이외에 host:port:ip:port 방식으로 호출하는 경우도 있던데, 관련내용 검토해서 보완해줘. 예을 들면 8081 등 custom port 호출하는 경우 필요했던 것 같아.
+
+---
+
+=============== [ocptools] #003 2026-09-07
+[작업자: Kiro]
+
+private repository 정보 입력을 요청할 때 기본 참고정보를 ocprgst.bss.skt:5000 으로 내부 변수화한 것을 참조하여
+출력하면서 입력을 받되, 엔터를 입력하면 기본 참고정보를 가지고 처리하도록 개선해줘.
+그리고 색상 코드는 유지하되 출력은 C_BOLD 로 수정해줘.
+
+[반영 내용]
+- ocptools.sh: 전역 변수 DEFAULT_REGISTRY="ocprgst.bss.skt:5000" 추가.
+- ocptools.sh: 레지스트리 주소를 입력받는 4개 핸들러(h_podman_login/h_podman_catalog/h_podman_tags/h_podman_delete_tag)의
+  ask_input 기본값을 ${DEFAULT_REGISTRY} 로 지정. ask_input 이 "[기본: ...]" 로 참고정보를 보여주고,
+  엔터(빈 입력) 시 기본값을 사용(직접 입력 시 입력값 우선). 두 경우 모두 동작 테스트 완료.
+- ocptools.sh: 색상 코드 정의(C_RED/C_GREEN/C_YELLOW/C_BLUE/C_CYAN/C_WHITE/C_BOLD)는 유지하고,
+  출력에 쓰이던 모든 색상 참조를 C_BOLD 로 통일(타이틀/실행문/메뉴/프롬프트/경고·오류 메시지).
+  기존 C_BOLD 조합 라인은 중복 없이 정리. bash -n 통과, 출력 경로에 남은 색상 참조 없음 확인.
+- docs/ocptools_manual.md: 레지스트리 주소 기본값 안내 추가, '8. 화면 출력(색상) 처리' 섹션 추가(이후 섹션 재번호),
+  변경이력/문서버전 v1.2 갱신.
+- ocptools.sh v1.2, 매뉴얼 v1.2.

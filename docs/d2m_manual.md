@@ -4,8 +4,8 @@
 |------|------|
 | 프로그램 | `d2m.sh` |
 | 식별자 | `[d2m]` |
-| 문서버전 | v1.4 |
-| 작성일 | 2026-08-16 |
+| 문서버전 | v1.5 |
+| 작성일 | 2026-09-07 |
 | 작성자 | k.s.k & kiro |
 
 ---
@@ -142,7 +142,51 @@ oc-mirror v2는 인증 파일로 `${XDG_RUNTIME_DIR}/containers/auth.json`을 **
 
 ---
 
-## 9. 종료 코드
+## 9. 정상 완료 후 cluster-resources 후처리 (name 중복 방지)
+
+`oc-mirror` 가 정상 완료(종료코드 0)되면, oc-mirror 가 자동 생성하는 `<disk_path>/working-dir/cluster-resources/` 아래 YAML 에 대해 **name 중복 방지 후처리** 를 수행합니다.
+
+release 는 버전별로 ImageSetConfiguration 을 별도로 만들기 때문에, 여러 버전을 같은 registry 에 저장하면 `signature-configmap.yaml` 의 `name` 이 충돌할 수 있습니다. 이를 방지하기 위해 `name` 값을 유니크하게 수정합니다. (`itms-*` / `idms-*` 는 중복이 허용되며, Operator 는 catalog index 로 처리되어 별도 조치가 필요 없습니다.)
+
+**어떤 처리를 할지는 `disk_path` 의 마지막 폴더명으로 판단합니다.**
+
+| disk_path 마지막 폴더명 | 대상 파일 | 처리 내용 |
+|-------------------------|-----------|-----------|
+| `additionalimages-nosignature` (개별 이미지) | `itms*.yaml` (각 파일별) | `itms*.yaml.origin` 으로 백업 후, `metadata.name` 값에 `-nosignature` 접미사 부여 |
+| 그 외 (release 등) | `signature-configmap.yaml` | `signature-configmap.yaml.origin` 으로 백업 후, `metadata.name` 값에 `-<disk_path 마지막 폴더명>` 접미사 부여 |
+
+### 동작 규칙
+
+- 수정 전 원본을 항상 `<파일>.origin` 으로 백업합니다.
+- `metadata:` 블록 아래 **첫 번째 `name:` 값만** 수정하며, 들여쓰기·기타 필드(namespace 등)는 그대로 보존합니다.
+- 이미 `<파일>.origin` 백업이 존재하면 **재실행으로 간주하여 건너뜁니다.** (접미사 중복 부착 방지)
+- 후처리는 미러링 성공 후에만 실행되며, 후처리 중 일부 오류가 발생해도 미러링 종료코드에는 영향을 주지 않고 경고만 출력합니다.
+
+### 예시
+
+```
+# disk_path 의 마지막 폴더명이 release-4.22.10 인 경우
+metadata:
+  name: signature-configmap            # 수정 전
+  name: signature-configmap-release-4.22.10   # 수정 후
+
+# disk_path 의 마지막 폴더명이 additionalimages-nosignature 인 경우
+metadata:
+  name: itms-generic-0                 # 수정 전
+  name: itms-generic-0-nosignature     # 수정 후
+```
+
+---
+
+## 10. 화면 출력(색상) 처리
+
+색상 코드 정의(`C_RED`, `C_GREEN`, `C_YELLOW`, `C_CYAN`, `C_WHITE`, `C_BOLD` 등)는 유지하되, 일부 터미널에서 글씨가 안 보이는 문제를 피하기 위해 **화면 출력은 모두 `C_BOLD`(굵게)로 통일** 되어 있습니다.
+
+- 나중에 특정 메시지를 색상으로 표시하고 싶으면, 해당 `printf` 의 `${C_BOLD}` 를 원하는 색상 변수(예: `${C_GREEN}`)로 수동 변경하면 됩니다.
+
+---
+
+## 11. 종료 코드
 
 | 코드 | 의미 |
 |------|------|
@@ -152,7 +196,7 @@ oc-mirror v2는 인증 파일로 `${XDG_RUNTIME_DIR}/containers/auth.json`을 **
 
 ---
 
-## 10. 문제 해결
+## 12. 문제 해결
 
 | 증상 | 원인 | 해결 |
 |------|------|------|
@@ -182,3 +226,4 @@ oc-mirror v2는 인증 파일로 `${XDG_RUNTIME_DIR}/containers/auth.json`을 **
 | v1.2 | 2026-08-16 | 불필요한 --skip-signature 옵션 제거 (서명 처리는 m2d 다운로드 단계에서 결정) | k.s.k & kiro |
 | v1.3 | 2026-08-16 | 인증 방식 개선: --authfile 강제 대신 XDG_RUNTIME_DIR을 실행 user 기준으로 세팅, --authfile은 선택 옵션 | k.s.k & kiro |
 | v1.4 | 2026-08-16 | --authfile 옵션 완전 제거(XDG_RUNTIME_DIR 방식 일원화), 인증 파일 부재 안내 메시지 수정 | k.s.k & kiro |
+| v1.5 | 2026-09-07 | 정상 완료 후 cluster-resources 후처리 추가(signature-configmap.yaml name 유니크화 / additionalimages-nosignature 의 itms*.yaml name 에 -nosignature 부여), 화면 출력 C_BOLD 통일, print_warn 헬퍼 추가 | k.s.k & kiro |
