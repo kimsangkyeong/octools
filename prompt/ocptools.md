@@ -80,3 +80,36 @@ private repository 정보 입력을 요청할 때 기본 참고정보를 ocprgst
 - docs/ocptools_manual.md: 레지스트리 주소 기본값 안내 추가, '8. 화면 출력(색상) 처리' 섹션 추가(이후 섹션 재번호),
   변경이력/문서버전 v1.2 갱신.
 - ocptools.sh v1.2, 매뉴얼 v1.2.
+
+---
+
+=============== [ocptools] #003 2026-09-07
+[작업자: Kiro]
+
+ocp cluster 내의 인증서들을 찾아서 유효일자를 출력하는 기능, pod의 이미지정보를 출력하는 기능, oc adm patch 기능 추가와 tcpdump, ss 명령어 추가, busybox 이미지를 이용한 테스트 방법, toolbox, nginx 이미지를 이용한 테스트 방법에 대해서 기존에 제공하던 것과 같이 사용자 편의성등을 고려하여 기능 추가해줘.
+
+[반영 내용]
+- 신규 카테고리 3개: ocp_cert(인증서 조회), ocp_adm(관리작업), test_img(테스트 이미지). CAT_IDS/CAT_LABEL 반영.
+- 인증서: h_cert_all(전체 TLS Secret 만료일, RH one-liner 재구성), h_cert_secret(특정 Secret 상세/enddate), h_cert_node(노드 kubelet 인증서), h_cert_apiurl(openssl s_client).
+- Pod 이미지: h_pod_images (ocp_get g_podimg, container 이름/image/imageID).
+- 관리작업: h_adm_patch(oc patch, confirm), h_adm_cordon/uncordon/drain(confirm), h_adm_top_node/top_pod.
+- 노드 tcpdump/ss: ocp_node 에 n_ss(ss -tulnp), n_tcpdump(h_node_tcpdump, oc debug node, -c 제한, confirm) 추가.
+  (net_diag 에는 로컬 ss/tcpdump 가 이미 있었고, 이번엔 노드 대상 추가)
+- 테스트 이미지: h_test_busybox(oc run --rm nslookup/wget), h_test_nginx(배포+curl), h_test_toolbox(노드 toolbox), h_test_cleanup(라벨 app=ocptools-test 정리, confirm).
+- ocptools.sh v1.3, 매뉴얼 v1.3. bash -n 통과, 스모크 테스트로 메뉴(oc get 24/adm 6/node 10/test 4) 확인.
+
+---
+
+=============== [ocptools] #004 2026-09-07
+[작업자: Kiro]
+
+istioctl 명령어 추가, 복수의 crt 파일을 merge하여 oc configmap 생성 혹은 patch하는 기능 추가, 복수의 json 파일의 내용을 1개의 merged json으로 만드는 jq 명령어 추가, openssl 명령어 사용법 추가해줘
+
+[반영 내용]
+- 신규 카테고리 2개: istio(istioctl), util(유틸리티). CAT_IDS/CAT_LABEL 반영.
+- istio: h_istio_version, h_istio_proxy_status, h_istio_proxy_config(pod 선택), h_istio_analyze(-A->--all-namespaces), h_istio_free.
+- util:
+  * h_util_crt_configmap: 복수 crt 병합(임시파일) 후 oc create configmap --from-file=<key>=<merged> (신규/apply갱신/실행문보기), confirm.
+  * h_util_json_merge: jq -s 로 병합(깊은병합 .*., 배열 ., 얕은병합 .+.), 출력파일 + 미리보기.
+  * h_util_openssl: 9종 대표 명령 메뉴(상세/만료/subject/s_client/CSR/자체서명/pkcs12/지문/key-crt짝).
+- ocptools.sh v1.4, 매뉴얼 v1.4(5.12 istio, 5.13 util). bash -n 통과, 스모크 테스트(메뉴 istio 5/util 3) 확인.

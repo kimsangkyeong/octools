@@ -26,6 +26,12 @@
 ##                                                  엔터만 누르면 기본값으로 처리하도록 개선
 ##                                                  (podman login/catalog/tags/delete_tag 프롬프트).
 ##                                              (2) 화면 출력을 C_BOLD 로 통일(색상 정의는 유지, 가독성 문제 회피)
+##  1.3       2026.09.07       k.s.k & kiro     기능 추가: 인증서 유효일자 조회(ocp_cert),
+##                                              Pod 이미지 정보 조회, OCP 관리작업(oc adm/patch: ocp_adm),
+##                                              노드 tcpdump/ss, 테스트 이미지(busybox/toolbox/nginx: test_img)
+##  1.4       2026.09.07       k.s.k & kiro     기능 추가: istioctl(istio), 유틸리티(util) -
+##                                              복수 crt merge->ConfigMap 생성/patch, 복수 JSON merge(jq),
+##                                              openssl 사용법
 ##
 ####################################################################################################
 
@@ -68,14 +74,19 @@ OC_LOGIN_CHECKED=0
 # CAT_IDS      : 유형 ID 목록 (표시 순서)
 # CAT_LABEL    : 유형 ID -> 화면 표시명 (연관배열, depth 1)
 # 세부 명령어는 각 유형별 CMDLIST_<catid> 배열로 관리한다.
-CAT_IDS=( "ocp_get" "ocp_node" "ocp_file" "ocp_exec" "podman_reg" "net_diag" "sys_net" )
+CAT_IDS=( "ocp_get" "ocp_cert" "ocp_adm" "ocp_node" "ocp_file" "ocp_exec" "test_img" "istio" "util" "podman_reg" "net_diag" "sys_net" )
 
 declare -A CAT_LABEL
 CAT_LABEL=(
   [ocp_get]="OCP 리소스 조회 (oc get)"
+  [ocp_cert]="OCP 인증서 조회 (만료일/상세)"
+  [ocp_adm]="OCP 관리 작업 (oc adm/patch)"
   [ocp_node]="OCP 노드 접속 실행 (oc debug node)"
   [ocp_file]="OCP 파일 송수신 (oc cp / rsync)"
   [ocp_exec]="OCP Pod 실행/진입 (oc exec/rsh/logs)"
+  [test_img]="테스트 이미지 (busybox/toolbox/nginx)"
+  [istio]="Istio 서비스메시 (istioctl)"
+  [util]="유틸리티 (crt merge/json merge/openssl)"
   [podman_reg]="Podman 레지스트리 (catalog/tags/tag/rmi)"
   [net_diag]="네트워크 진단 (curl/ncat/ping/ss)"
   [sys_net]="시스템/네트워크 (chrony/NIC)"
@@ -564,7 +575,22 @@ register_all_commands()
   register_cmd ocp_get g_operator "Operator(CSV) 조회"             "h_ocget_ns csv"               N "설치된 Operator(ClusterServiceVersion)"
   register_cmd ocp_get g_ip      "InstallPlan 조회"                "h_ocget_ns installplan"       N "Operator 설치 계획"
   register_cmd ocp_get g_event   "Event 조회 (시간순)"             "h_ocget_event"                N "네임스페이스 이벤트"
+  register_cmd ocp_get g_podimg  "Pod 이미지 정보 조회"            "h_pod_images"                 N "Pod 컨테이너/이미지(이름·이미지·imageID) 목록"
   register_cmd ocp_get g_free    "임의 리소스 직접 조회"           "h_ocget_free"                 N "리소스 종류를 직접 입력하여 조회"
+
+  # ---- [유형1-2] OCP 인증서 조회 -----------------------------------------------------------------
+  register_cmd ocp_cert c_all     "전체 TLS Secret 만료일 조회"    "h_cert_all"        N "모든 namespace 의 kubernetes.io/tls Secret 만료일"
+  register_cmd ocp_cert c_one     "특정 Secret 인증서 상세/만료"   "h_cert_secret"     N "선택 Secret 의 인증서 상세 및 enddate"
+  register_cmd ocp_cert c_node    "Node kubelet 인증서 만료일"     "h_cert_node"       N "노드 kubelet client/serving 인증서 만료일"
+  register_cmd ocp_cert c_apiurl  "API endpoint 인증서 만료일"     "h_cert_apiurl"     N "openssl s_client 로 서버 인증서 만료일 확인"
+
+  # ---- [유형1-3] OCP 관리 작업 (oc adm / patch) --------------------------------------------------
+  register_cmd ocp_adm a_patch    "리소스 patch (oc patch)"        "h_adm_patch"       Y "리소스에 JSON/merge patch 적용 (변경 주의)"
+  register_cmd ocp_adm a_cordon   "노드 cordon (스케줄 차단)"      "h_adm_cordon"      Y "oc adm cordon <node>"
+  register_cmd ocp_adm a_uncordon "노드 uncordon (스케줄 허용)"    "h_adm_uncordon"    Y "oc adm uncordon <node>"
+  register_cmd ocp_adm a_drain    "노드 drain (Pod 축출)"          "h_adm_drain"       Y "oc adm drain <node> (주의)"
+  register_cmd ocp_adm a_top_node "노드 리소스 사용량 (top node)"  "h_adm_top_node"    N "oc adm top node"
+  register_cmd ocp_adm a_top_pod  "Pod 리소스 사용량 (top pod)"    "h_adm_top_pod"     N "oc adm top pod -n <ns>"
 
   # ---- [유형2] OCP 노드 접속 실행 (oc debug node) ----------------------------------------------
   register_cmd ocp_node n_multipath "multipath 설정 확인"          "h_node_run 'cat /etc/multipath.conf'"    N "멀티패스 설정 파일"
@@ -574,7 +600,27 @@ register_all_commands()
   register_cmd ocp_node n_nic       "네트워크 인터페이스 확인"     "h_node_run 'ip -br addr'"                N "NIC 상태/IP"
   register_cmd ocp_node n_route     "라우팅 테이블 확인"           "h_node_run 'ip route'"                   N "라우팅"
   register_cmd ocp_node n_journal   "kubelet 로그 확인(최근100)"   "h_node_run 'journalctl -u kubelet --no-pager -n 100'" N "kubelet 저널"
+  register_cmd ocp_node n_ss        "노드 소켓/포트 상태(ss)"      "h_node_run 'ss -tulnp'"                  N "노드 리스닝 포트/연결 상태"
+  register_cmd ocp_node n_tcpdump   "노드 tcpdump 패킷 캡처"       "h_node_tcpdump"                          Y "노드에서 인터페이스/필터 기반 캡처(-c 제한)"
   register_cmd ocp_node n_free      "노드 명령 직접 입력"          "h_node_free"                             N "임의 명령을 노드에서 실행"
+
+  # ---- [유형6-2] 테스트 이미지 (busybox/toolbox/nginx) -----------------------------------------
+  register_cmd test_img t_busybox   "busybox 테스트 Pod 실행"      "h_test_busybox"    N "임시 busybox Pod 로 네트워크/DNS 테스트"
+  register_cmd test_img t_nginx     "nginx 테스트 Pod 실행"        "h_test_nginx"      N "임시 nginx Pod 배포 후 curl 테스트"
+  register_cmd test_img t_toolbox   "toolbox 사용 안내(노드)"      "h_test_toolbox"    N "노드에서 toolbox 로 진단 도구 사용"
+  register_cmd test_img t_cleanup   "테스트 리소스 정리"           "h_test_cleanup"    Y "생성한 테스트 Pod 삭제"
+
+  # ---- [유형] Istio 서비스메시 (istioctl) --------------------------------------------------------
+  register_cmd istio i_version   "istioctl version"             "h_istio_version"       N "istioctl/컨트롤플레인 버전"
+  register_cmd istio i_pstatus   "proxy-status 조회"            "h_istio_proxy_status"  N "istioctl proxy-status (sidecar 동기화 상태)"
+  register_cmd istio i_pconfig   "proxy-config 조회"            "h_istio_proxy_config"  N "istioctl proxy-config (cluster/listener/route 등)"
+  register_cmd istio i_analyze   "구성 분석 (analyze)"          "h_istio_analyze"       N "istioctl analyze (설정 문제 진단)"
+  register_cmd istio i_free      "istioctl 명령 직접 입력"      "h_istio_free"          N "임의 istioctl 하위명령 실행"
+
+  # ---- [유형] 유틸리티 (crt merge / json merge / openssl) ---------------------------------------
+  register_cmd util u_crt_cm     "crt merge -> ConfigMap 생성/patch" "h_util_crt_configmap"  Y "복수 crt 를 하나로 합쳐 CA bundle ConfigMap 생성/patch"
+  register_cmd util u_json_merge "복수 JSON -> merged JSON (jq)"     "h_util_json_merge"     N "여러 JSON 파일을 하나로 병합"
+  register_cmd util u_openssl    "openssl 사용법/실행"               "h_util_openssl"        N "인증서 확인/변환 등 openssl 대표 명령"
 
   # ---- [유형3] OCP 파일 송수신 (oc cp / rsync) -------------------------------------------------
   register_cmd ocp_file f_download  "Pod -> 로컬 다운로드 (oc cp)" "h_cp_download"   N "Pod 내부 파일을 로컬로 복사"
@@ -1653,6 +1699,639 @@ preflight_check()
     sleep 1
   fi
 }
+# --------------------------------------------------------------------------------------------------
+# [추가] Pod 이미지 정보 조회
+# --------------------------------------------------------------------------------------------------
+
+######################################################################################################
+##  Function Name : h_pod_images
+##  Description : Pod 의 컨테이너 이름/이미지/imageID 목록을 조회한다.
+##  information : input none / output 이미지 정보 (NS 선택: 전체/특정)
+######################################################################################################
+h_pod_images()
+{
+  local ns_opt=""
+  check_oc_login || { pause_enter; return 1; }
+  select_namespace ns_opt
+  [ $? -ne 0 ] && return 1
+
+  # 컨테이너/이미지/imageID 를 보기 좋게 출력 (initContainer 포함)
+  run_cmd "oc get pod ${ns_opt} -o jsonpath='{range .items[*]}{.metadata.namespace}{\"/\"}{.metadata.name}{\"\\n\"}{range .spec.containers[*]}{\"  container: \"}{.name}{\" image: \"}{.image}{\"\\n\"}{end}{range .status.containerStatuses[*]}{\"  imageID: \"}{.imageID}{\"\\n\"}{end}{\"\\n\"}{end}'"
+  pause_enter
+}
+
+# --------------------------------------------------------------------------------------------------
+# [추가] OCP 인증서 조회 (만료일/상세)
+# --------------------------------------------------------------------------------------------------
+
+######################################################################################################
+##  Function Name : h_cert_all
+##  Description : 모든 namespace 의 kubernetes.io/tls Secret 인증서 만료일을 목록으로 조회한다.
+##                (참고: Red Hat 권장 one-liner 를 재구성. openssl/base64 필요)
+##  information : input none / output NAMESPACE/NAME/EXPIRY 표
+######################################################################################################
+h_cert_all()
+{
+  check_oc_login || { pause_enter; return 1; }
+  check_cmd_exist "openssl" || { pause_enter; return 1; }
+
+  # tls.crt 를 base64 디코드하여 enddate 추출
+  local cmd
+  cmd="echo -e 'NAMESPACE\\tNAME\\tEXPIRY' && oc get secrets -A -o go-template='{{range .items}}{{if eq .type \"kubernetes.io/tls\"}}{{.metadata.namespace}}{{\" \"}}{{.metadata.name}}{{\" \"}}{{index .data \"tls.crt\"}}{{\"\\n\"}}{{end}}{{end}}' | while read ns name cert; do echo -en \"\$ns\\t\$name\\t\"; echo \"\$cert\" | base64 -d 2>/dev/null | openssl x509 -noout -enddate 2>/dev/null; done | column -t"
+  run_cmd "${cmd}"
+  pause_enter
+}
+
+######################################################################################################
+##  Function Name : h_cert_secret
+##  Description : 특정 Secret 의 인증서 상세/만료일을 조회한다.
+##  information : input none / output openssl x509 결과
+######################################################################################################
+h_cert_secret()
+{
+  local ns_opt="" ns secret key mode
+  check_oc_login || { pause_enter; return 1; }
+  check_cmd_exist "openssl" || { pause_enter; return 1; }
+
+  select_namespace ns_opt
+  [ $? -ne 0 ] && return 1
+  ns=$(echo "${ns_opt}" | sed 's/^-n //')
+  [ "${ns_opt}" = "-A" ] && { echo "  특정 namespace를 선택해야 합니다."; pause_enter; return 1; }
+
+  select_oc_resource "secret" secret "-n ${ns}"
+  [ $? -ne 0 ] && return 1
+
+  ask_input "인증서 키 이름 (예: tls.crt, ca.crt)" key "tls.crt"
+  # jsonpath 에서 '.' 이스케이프
+  local key_esc
+  key_esc=$(echo "${key}" | sed 's/\./\\./g')
+
+  echo ""
+  printf "  ${C_CYAN}출력: [1] 만료일만(enddate)  [2] 전체 상세(text)${C_RESET}\n"
+  printf "  ${C_WHITE}선택: ${C_RESET}"
+  read -r mode
+  if [ "${mode}" = "2" ]; then
+    run_cmd "oc get secret ${secret} -n ${ns} -o jsonpath='{.data.${key_esc}}' | base64 -d | openssl x509 -inform PEM -text -noout"
+  else
+    run_cmd "oc get secret ${secret} -n ${ns} -o jsonpath='{.data.${key_esc}}' | base64 -d | openssl x509 -inform PEM -noout -enddate"
+  fi
+  pause_enter
+}
+
+######################################################################################################
+##  Function Name : h_cert_node
+##  Description : 노드 kubelet 인증서(client/serving) 만료일을 조회한다. (oc debug node)
+##  information : input none / output openssl enddate
+######################################################################################################
+h_cert_node()
+{
+  local node=""
+  check_oc_login || { pause_enter; return 1; }
+  select_oc_resource "node" node ""
+  [ $? -ne 0 ] && return 1
+
+  # 노드의 kubelet 인증서 경로에서 enddate 추출
+  local inner='for f in /var/lib/kubelet/pki/kubelet-client-current.pem /var/lib/kubelet/pki/kubelet-server-current.pem; do echo "== $f =="; openssl x509 -in "$f" -noout -enddate 2>/dev/null; done'
+  run_cmd "oc debug node/${node} -q -- chroot /host /bin/bash -c '${inner}'"
+  pause_enter
+}
+
+######################################################################################################
+##  Function Name : h_cert_apiurl
+##  Description : URL(host:port)에 접속하여 서버 인증서 만료일을 확인한다. (openssl s_client)
+##  information : input none / output 인증서 subject/issuer/enddate
+######################################################################################################
+h_cert_apiurl()
+{
+  local hostport
+  check_cmd_exist "openssl" || { pause_enter; return 1; }
+  ask_input "대상 host:port (예: api.cluster.example.com:6443)" hostport ""
+  [ -z "${hostport}" ] && return 1
+  local sni
+  sni=$(echo "${hostport}" | cut -d: -f1)
+  run_cmd "echo | openssl s_client -connect ${hostport} -servername ${sni} 2>/dev/null | openssl x509 -noout -subject -issuer -dates"
+  pause_enter
+}
+
+# --------------------------------------------------------------------------------------------------
+# [추가] OCP 관리 작업 (oc adm / patch)
+# --------------------------------------------------------------------------------------------------
+
+######################################################################################################
+##  Function Name : h_adm_patch
+##  Description : 리소스에 patch 를 적용한다. (oc patch) - 변경 작업이므로 confirm.
+##  information : input none / output patch 결과
+######################################################################################################
+h_adm_patch()
+{
+  local ns_opt="" ns rtype rname ptype pbody scope
+  check_oc_login || { pause_enter; return 1; }
+
+  ask_input "리소스 종류 (예: deployment, node, machineconfigpool)" rtype ""
+  [ -z "${rtype}" ] && return 1
+
+  echo ""
+  printf "  ${C_CYAN}namespace 스코프입니까? [y] 예(NS선택)  [N] 아니오(클러스터)${C_RESET}\n"
+  printf "  ${C_WHITE}선택: ${C_RESET}"
+  read -r scope
+  if [ "${scope}" = "y" ] || [ "${scope}" = "Y" ]; then
+    select_namespace ns_opt
+    [ $? -ne 0 ] && return 1
+    ns=$(echo "${ns_opt}" | sed 's/^-n //')
+    [ "${ns_opt}" = "-A" ] && ns_opt=""
+  fi
+
+  ask_input "리소스 이름" rname ""
+  [ -z "${rname}" ] && return 1
+
+  ask_input "patch 타입 (merge/json/strategic)" ptype "merge"
+  ask_input "patch 내용 (예: '{\"spec\":{\"paused\":true}}')" pbody ""
+  [ -z "${pbody}" ] && return 1
+
+  run_cmd "oc patch ${rtype} ${rname} ${ns_opt} --type=${ptype} -p '${pbody}'" "Y"
+  pause_enter
+}
+
+######################################################################################################
+##  Function Name : h_adm_cordon / h_adm_uncordon / h_adm_drain
+##  Description : 노드 스케줄링 제어. cordon/uncordon/drain.
+######################################################################################################
+h_adm_cordon()
+{
+  local node=""
+  check_oc_login || { pause_enter; return 1; }
+  select_oc_resource "node" node ""
+  [ $? -ne 0 ] && return 1
+  run_cmd "oc adm cordon ${node}" "Y"
+  pause_enter
+}
+
+h_adm_uncordon()
+{
+  local node=""
+  check_oc_login || { pause_enter; return 1; }
+  select_oc_resource "node" node ""
+  [ $? -ne 0 ] && return 1
+  run_cmd "oc adm uncordon ${node}" "Y"
+  pause_enter
+}
+
+h_adm_drain()
+{
+  local node="" opts
+  check_oc_login || { pause_enter; return 1; }
+  select_oc_resource "node" node ""
+  [ $? -ne 0 ] && return 1
+  ask_input "drain 옵션" opts "--ignore-daemonsets --delete-emptydir-data --force"
+  printf "${C_RED}  주의: drain 은 노드의 Pod 를 축출합니다.${C_RESET}\n"
+  run_cmd "oc adm drain ${node} ${opts}" "Y"
+  pause_enter
+}
+
+######################################################################################################
+##  Function Name : h_adm_top_node / h_adm_top_pod
+##  Description : 리소스 사용량 조회. (oc adm top)
+######################################################################################################
+h_adm_top_node()
+{
+  check_oc_login || { pause_enter; return 1; }
+  run_cmd "oc adm top node"
+  pause_enter
+}
+
+h_adm_top_pod()
+{
+  local ns_opt=""
+  check_oc_login || { pause_enter; return 1; }
+  select_namespace ns_opt
+  [ $? -ne 0 ] && return 1
+  run_cmd "oc adm top pod ${ns_opt}"
+  pause_enter
+}
+
+# --------------------------------------------------------------------------------------------------
+# [추가] 노드 tcpdump (oc debug node 기반)
+# --------------------------------------------------------------------------------------------------
+
+######################################################################################################
+##  Function Name : h_node_tcpdump
+##  Description : 노드에서 tcpdump 로 패킷을 캡처한다. (oc debug node -> chroot /host)
+##                장시간 캡처 방지를 위해 -c(개수) 제한을 받는다. confirm 후 실행.
+##  information : input none / output 캡처 결과
+######################################################################################################
+h_node_tcpdump()
+{
+  local node="" iface host port cnt filter
+  check_oc_login || { pause_enter; return 1; }
+  select_oc_resource "node" node ""
+  [ $? -ne 0 ] && return 1
+
+  ask_input "인터페이스 (예: any, ens192)" iface "any"
+  ask_input "host 필터(선택, 예: 10.0.0.10)" host ""
+  ask_input "port 필터(선택, 예: 443)" port ""
+  ask_input "캡처 패킷 개수(-c)" cnt "20"
+
+  filter=""
+  [ -n "${host}" ] && filter="host ${host}"
+  if [ -n "${port}" ]; then
+    if [ -n "${filter}" ]; then filter="${filter} and port ${port}"; else filter="port ${port}"; fi
+  fi
+
+  local inner="tcpdump -i ${iface} -nn -c ${cnt}"
+  [ -n "${filter}" ] && inner="${inner} '${filter}'"
+
+  run_cmd "oc debug node/${node} -q -- chroot /host /bin/bash -c \"${inner}\"" "Y"
+  pause_enter
+}
+
+# --------------------------------------------------------------------------------------------------
+# [추가] 테스트 이미지 (busybox / nginx / toolbox)
+#   - 임시 테스트 Pod 를 생성하여 네트워크/DNS/HTTP 테스트를 수행한다.
+#   - 생성 리소스는 라벨(app=ocptools-test)로 관리하여 일괄 정리할 수 있다.
+# --------------------------------------------------------------------------------------------------
+TEST_LABEL="app=ocptools-test"
+
+######################################################################################################
+##  Function Name : h_test_busybox
+##  Description : busybox 임시 Pod 로 네트워크/DNS 테스트를 수행한다.
+##  information : input none / output 테스트 결과
+######################################################################################################
+h_test_busybox()
+{
+  local ns target
+  check_oc_login || { pause_enter; return 1; }
+  ask_input "테스트 실행 namespace" ns "default"
+  ask_input "테스트 대상(host 또는 host:port)" target "kubernetes.default.svc"
+
+  echo ""
+  print_info "busybox 임시 Pod 로 일회성 명령을 실행합니다. (--rm, 종료 시 자동 삭제)"
+  # nslookup + wget 로 DNS/HTTP 확인. --restart=Never, --rm 로 일회성 실행.
+  run_cmd "oc run ocptools-busybox --namespace=${ns} --image=busybox:latest --restart=Never --rm -it --labels='${TEST_LABEL}' -- sh -c 'echo [nslookup]; nslookup ${target}; echo [wget]; wget -qO- --timeout=5 http://${target} 2>/dev/null | head -20 || echo (HTTP 응답 없음/비HTTP)'"
+  pause_enter
+}
+
+######################################################################################################
+##  Function Name : h_test_nginx
+##  Description : nginx 임시 Pod 를 배포하고 curl 로 응답을 확인한다.
+##  information : input none / output 배포/테스트 결과
+######################################################################################################
+h_test_nginx()
+{
+  local ns
+  check_oc_login || { pause_enter; return 1; }
+  ask_input "테스트 실행 namespace" ns "default"
+
+  echo ""
+  print_info "nginx 임시 Pod 를 배포합니다. (라벨: ${TEST_LABEL})"
+  run_cmd "oc run ocptools-nginx --namespace=${ns} --image=nginx:latest --restart=Never --labels='${TEST_LABEL}' --port=80"
+  echo ""
+  print_info "Pod Ready 대기 후 내부에서 curl 로 자기 자신에 접속 테스트합니다."
+  run_cmd "oc wait --for=condition=Ready pod/ocptools-nginx -n ${ns} --timeout=60s && oc exec -n ${ns} pod/ocptools-nginx -- curl -s -o /dev/null -w 'HTTP:%{http_code}\\n' http://localhost:80"
+  echo ""
+  print_info "정리는 [테스트 리소스 정리] 메뉴 또는 아래 명령으로 수행하세요."
+  show_exec_cmd "oc delete pod -l ${TEST_LABEL} -n ${ns}"
+  pause_enter
+}
+
+######################################################################################################
+##  Function Name : h_test_toolbox
+##  Description : 노드에서 toolbox 로 진단 도구를 사용하는 방법을 안내/실행한다.
+##                toolbox 는 RHCOS 노드에서 진단용 컨테이너(support-tools)를 띄우는 도구이다.
+##  information : input none / output 안내 및 실행문
+######################################################################################################
+h_test_toolbox()
+{
+  local node="" tcmd
+  check_oc_login || { pause_enter; return 1; }
+  print_info "toolbox 는 RHCOS 노드에서 진단 도구가 포함된 support-tools 컨테이너를 실행합니다."
+  select_oc_resource "node" node ""
+  [ $? -ne 0 ] && return 1
+  ask_input "toolbox 내부에서 실행할 명령 (예: sos report, tcpdump -D)" tcmd "cat /etc/redhat-release"
+  # oc debug node -> chroot /host -> toolbox <cmd>
+  run_cmd "oc debug node/${node} -q -- chroot /host /bin/bash -c \"toolbox ${tcmd}\""
+  pause_enter
+}
+
+######################################################################################################
+##  Function Name : h_test_cleanup
+##  Description : 생성한 테스트 Pod(라벨 기반)를 삭제한다. confirm 후 실행.
+##  information : input none / output 삭제 결과
+######################################################################################################
+h_test_cleanup()
+{
+  local ns_opt=""
+  check_oc_login || { pause_enter; return 1; }
+  select_namespace ns_opt
+  [ $? -ne 0 ] && return 1
+  run_cmd "oc delete pod -l ${TEST_LABEL} ${ns_opt}" "Y"
+  pause_enter
+}
+
+# --------------------------------------------------------------------------------------------------
+# [추가] Istio 서비스메시 (istioctl)
+# --------------------------------------------------------------------------------------------------
+
+######################################################################################################
+##  Function Name : h_istio_version
+##  Description : istioctl 및 컨트롤플레인 버전을 조회한다.
+##  information : input none / output 버전 정보
+######################################################################################################
+h_istio_version()
+{
+  check_cmd_exist "istioctl" || { pause_enter; return 1; }
+  run_cmd "istioctl version"
+  pause_enter
+}
+
+######################################################################################################
+##  Function Name : h_istio_proxy_status
+##  Description : sidecar proxy 동기화 상태를 조회한다. (istioctl proxy-status)
+##  information : input none / output proxy-status
+######################################################################################################
+h_istio_proxy_status()
+{
+  check_cmd_exist "istioctl" || { pause_enter; return 1; }
+  check_oc_login || { pause_enter; return 1; }
+  run_cmd "istioctl proxy-status"
+  pause_enter
+}
+
+######################################################################################################
+##  Function Name : h_istio_proxy_config
+##  Description : 특정 Pod 의 Envoy proxy 설정을 조회한다. (istioctl proxy-config)
+##  information : input none / output proxy-config
+######################################################################################################
+h_istio_proxy_config()
+{
+  local ns_opt="" ns pod sub
+  check_cmd_exist "istioctl" || { pause_enter; return 1; }
+  check_oc_login || { pause_enter; return 1; }
+
+  select_namespace ns_opt
+  [ $? -ne 0 ] && return 1
+  ns=$(echo "${ns_opt}" | sed 's/^-n //')
+  [ "${ns_opt}" = "-A" ] && { echo "  proxy-config 는 특정 namespace를 선택해야 합니다."; pause_enter; return 1; }
+
+  select_oc_resource "pod" pod "-n ${ns}"
+  [ $? -ne 0 ] && return 1
+
+  ask_input "조회 대상 (all/cluster/listener/route/endpoint/bootstrap/secret)" sub "all"
+  run_cmd "istioctl proxy-config ${sub} ${pod}.${ns}"
+  pause_enter
+}
+
+######################################################################################################
+##  Function Name : h_istio_analyze
+##  Description : Istio 구성 문제를 분석한다. (istioctl analyze)
+##  information : input none / output analyze 결과
+######################################################################################################
+h_istio_analyze()
+{
+  local ns_opt=""
+  check_cmd_exist "istioctl" || { pause_enter; return 1; }
+  check_oc_login || { pause_enter; return 1; }
+  select_namespace ns_opt
+  [ $? -ne 0 ] && return 1
+  # -A 이면 --all-namespaces 로 변환
+  if [ "${ns_opt}" = "-A" ]; then
+    run_cmd "istioctl analyze --all-namespaces"
+  else
+    run_cmd "istioctl analyze ${ns_opt}"
+  fi
+  pause_enter
+}
+
+######################################################################################################
+##  Function Name : h_istio_free
+##  Description : 임의의 istioctl 하위 명령을 직접 입력하여 실행한다. (학습/확장)
+##  information : input none / output 실행 결과
+######################################################################################################
+h_istio_free()
+{
+  local sub
+  check_cmd_exist "istioctl" || { pause_enter; return 1; }
+  ask_input "istioctl 하위 명령 입력 (예: dashboard kiali, experimental describe pod X)" sub ""
+  [ -z "${sub}" ] && return 1
+  run_cmd "istioctl ${sub}"
+  pause_enter
+}
+
+# --------------------------------------------------------------------------------------------------
+# [추가] 유틸리티 (crt merge / json merge / openssl)
+# --------------------------------------------------------------------------------------------------
+
+######################################################################################################
+##  Function Name : h_util_crt_configmap
+##  Description : 복수의 crt(PEM) 파일을 하나로 merge 하여 CA bundle ConfigMap 을 생성하거나
+##                기존 ConfigMap 을 patch 한다. (예: user-ca-bundle, trusted CA 등)
+##  information : input none / output ConfigMap 생성 또는 patch 결과
+######################################################################################################
+h_util_crt_configmap()
+{
+  local files ns_opt ns cmname key mode merged
+  check_oc_login || { pause_enter; return 1; }
+
+  # 1) merge 할 crt 파일들 입력 (공백 구분, glob 허용)
+  ask_input "merge 할 crt 파일들 (공백 구분, 예: a.crt b.crt 또는 /path/*.crt)" files ""
+  [ -z "${files}" ] && return 1
+
+  # 파일 존재 확인 및 병합 (임시 파일 사용)
+  merged=$(mktemp 2>/dev/null || echo "/tmp/ocptools_ca_$$.pem")
+  : > "${merged}"
+  local f found=0
+  for f in ${files}; do
+    if [ -f "${f}" ]; then
+      cat "${f}" >> "${merged}"
+      echo "" >> "${merged}"   # 인증서 사이 개행 보장
+      found=$((found+1))
+    else
+      print_warn "파일 없음(건너뜀): ${f}"
+    fi
+  done
+  if [ ${found} -eq 0 ]; then
+    print_error "merge 할 유효한 crt 파일이 없습니다."
+    rm -f "${merged}"; pause_enter; return 1
+  fi
+  print_info "총 ${found}개 crt 파일을 병합했습니다: ${merged}"
+
+  # 2) 대상 namespace / ConfigMap 이름 / key
+  select_namespace ns_opt
+  if [ $? -ne 0 ] || [ "${ns_opt}" = "-A" ]; then
+    print_error "특정 namespace를 선택해야 합니다."
+    rm -f "${merged}"; pause_enter; return 1
+  fi
+  ns=$(echo "${ns_opt}" | sed 's/^-n //')
+
+  ask_input "ConfigMap 이름" cmname "user-ca-bundle"
+  ask_input "데이터 key (파일명)" key "ca-bundle.crt"
+
+  # 3) 생성 또는 patch 선택
+  echo ""
+  printf "  ${C_BOLD}적용 방식: [1] 신규 생성(create)  [2] 기존 갱신(create --dry-run | apply)  [3] 실행문만 보기${C_RESET}\n"
+  printf "  ${C_BOLD}선택: ${C_RESET}"
+  read -r mode
+
+  local base_cmd="oc create configmap ${cmname} -n ${ns} --from-file=${key}=${merged}"
+  case "${mode}" in
+    2)
+      # create --dry-run -o yaml | oc apply (있으면 갱신, 없으면 생성)
+      run_cmd "oc create configmap ${cmname} -n ${ns} --from-file=${key}=${merged} --dry-run=client -o yaml | oc apply -f -" "Y"
+      ;;
+    3)
+      show_exec_cmd "${base_cmd}"
+      echo "  (갱신형)  ${base_cmd} --dry-run=client -o yaml | oc apply -f -"
+      ;;
+    *)
+      run_cmd "${base_cmd}" "Y"
+      ;;
+  esac
+
+  # 임시 병합 파일 정리
+  rm -f "${merged}"
+  pause_enter
+}
+
+######################################################################################################
+##  Function Name : h_util_json_merge
+##  Description : 복수의 JSON 파일을 하나의 merged JSON 으로 병합한다. (jq)
+##                병합 방식: [1] 객체 깊은 병합(뒤 파일 우선), [2] 배열로 결합, [3] 얕은 병합.
+##  information : input none / output merged JSON 파일 저장
+######################################################################################################
+h_util_json_merge()
+{
+  local files out mode f found=0
+  check_cmd_exist "jq" || { pause_enter; return 1; }
+
+  ask_input "merge 할 JSON 파일들 (공백 구분, 예: a.json b.json 또는 /path/*.json)" files ""
+  [ -z "${files}" ] && return 1
+  ask_input "출력 파일 경로" out "./merged.json"
+
+  # 유효 파일 확인
+  local valid_files=""
+  for f in ${files}; do
+    if [ -f "${f}" ] && jq -e . "${f}" >/dev/null 2>&1; then
+      valid_files="${valid_files} ${f}"
+      found=$((found+1))
+    else
+      print_warn "JSON 파일 아님/없음(건너뜀): ${f}"
+    fi
+  done
+  if [ ${found} -eq 0 ]; then
+    print_error "merge 할 유효한 JSON 파일이 없습니다."
+    pause_enter; return 1
+  fi
+
+  echo ""
+  printf "  ${C_BOLD}병합 방식: [1] 객체 깊은 병합(뒤 파일 우선)  [2] 배열로 결합  [3] 얕은 병합(+)${C_RESET}\n"
+  printf "  ${C_BOLD}선택: ${C_RESET}"
+  read -r mode
+
+  case "${mode}" in
+    2)
+      # 각 파일을 배열 요소로 결합
+      run_cmd "jq -s '.' ${valid_files} > ${out}"
+      ;;
+    3)
+      # 얕은 병합: reduce with +
+      run_cmd "jq -s 'reduce .[] as \$x ({}; . + \$x)' ${valid_files} > ${out}"
+      ;;
+    *)
+      # 깊은 병합: reduce with * (뒤 파일이 우선)
+      run_cmd "jq -s 'reduce .[] as \$x ({}; . * \$x)' ${valid_files} > ${out}"
+      ;;
+  esac
+
+  if [ -f "${out}" ]; then
+    print_ok "병합 완료: ${out}"
+    echo "  미리보기(상위):"
+    jq . "${out}" 2>/dev/null | head -20
+  fi
+  pause_enter
+}
+
+######################################################################################################
+##  Function Name : h_util_openssl
+##  Description : openssl 대표 사용법을 메뉴로 제공하고 실행한다. (학습형)
+##                각 항목은 실행문을 보여주어 직접 사용법을 익히도록 한다.
+##  information : input none / output openssl 실행 결과
+######################################################################################################
+h_util_openssl()
+{
+  check_cmd_exist "openssl" || { pause_enter; return 1; }
+
+  RENDER_ITEMS=(
+    "인증서 상세 보기 (x509 -text)"
+    "인증서 만료일 (x509 -noout -enddate)"
+    "인증서 subject/issuer (x509 -noout -subject -issuer)"
+    "원격 서버 인증서 (s_client -connect)"
+    "CSR 생성 (req -new)"
+    "자체서명 인증서 생성 (req -x509)"
+    "PFX/P12 -> PEM 변환 (pkcs12)"
+    "인증서 지문 (x509 -fingerprint -sha256)"
+    "개인키/인증서 modulus 일치 확인"
+  )
+  local idx
+  select_from_list "openssl 사용법 선택" idx
+  [ $? -ne 0 ] && return 1
+
+  local f hostport out days
+  case ${idx} in
+    0)
+      ask_input "인증서 파일 경로" f ""
+      [ -z "${f}" ] && return 1
+      run_cmd "openssl x509 -in ${f} -text -noout"
+      ;;
+    1)
+      ask_input "인증서 파일 경로" f ""
+      [ -z "${f}" ] && return 1
+      run_cmd "openssl x509 -in ${f} -noout -enddate"
+      ;;
+    2)
+      ask_input "인증서 파일 경로" f ""
+      [ -z "${f}" ] && return 1
+      run_cmd "openssl x509 -in ${f} -noout -subject -issuer"
+      ;;
+    3)
+      ask_input "대상 host:port (예: api.example.com:6443)" hostport ""
+      [ -z "${hostport}" ] && return 1
+      local sni; sni=$(echo "${hostport}" | cut -d: -f1)
+      run_cmd "echo | openssl s_client -connect ${hostport} -servername ${sni} 2>/dev/null | openssl x509 -noout -subject -issuer -dates"
+      ;;
+    4)
+      ask_input "생성할 key 파일" f "server.key"
+      ask_input "생성할 CSR 파일" out "server.csr"
+      run_cmd "openssl req -new -newkey rsa:2048 -nodes -keyout ${f} -out ${out}"
+      ;;
+    5)
+      ask_input "생성할 key 파일" f "selfsigned.key"
+      ask_input "생성할 crt 파일" out "selfsigned.crt"
+      ask_input "유효기간(일)" days "365"
+      run_cmd "openssl req -x509 -newkey rsa:2048 -nodes -keyout ${f} -out ${out} -days ${days}"
+      ;;
+    6)
+      ask_input "PFX/P12 파일" f ""
+      ask_input "출력 PEM 파일" out "output.pem"
+      [ -z "${f}" ] && return 1
+      run_cmd "openssl pkcs12 -in ${f} -out ${out} -nodes"
+      ;;
+    7)
+      ask_input "인증서 파일 경로" f ""
+      [ -z "${f}" ] && return 1
+      run_cmd "openssl x509 -in ${f} -noout -fingerprint -sha256"
+      ;;
+    8)
+      ask_input "인증서(crt) 파일" f ""
+      ask_input "개인키(key) 파일" out ""
+      [ -z "${f}" ] && return 1
+      [ -z "${out}" ] && return 1
+      # modulus 해시가 같으면 짝이 맞음
+      run_cmd "echo -n 'crt md5 : '; openssl x509 -noout -modulus -in ${f} | openssl md5; echo -n 'key md5 : '; openssl rsa -noout -modulus -in ${out} | openssl md5"
+      ;;
+    *) return 1 ;;
+  esac
+  pause_enter
+}
+
 # ======<<<< Function Registration Area (End) >>>>=================================================
 
 # ======<<<< Main Logic Coding Area (Start) >>>>===================================================

@@ -3,7 +3,7 @@
 | 항목 | 내용 |
 |------|------|
 | 프로그램 | `ocptools.sh` |
-| 문서버전 | v1.2 |
+| 문서버전 | v1.4 |
 | 작성일 | 2026-09-07 |
 | 작성자 | k.s.k & kiro |
 
@@ -169,6 +169,89 @@ chmod +x ocptools.sh
 | NIC DOWN | `sudo ip link set <nic> down` | 실행 전 확인(세션 끊김 주의) |
 | 라우팅 | `ip route` | |
 
+### 5.8 OCP 인증서 조회
+
+| 세부 명령 | 실행문 예시 | 비고 |
+|-----------|-------------|------|
+| 전체 TLS Secret 만료일 | `oc get secrets -A ... tls.crt ... \| base64 -d \| openssl x509 -noout -enddate` | openssl 필요 |
+| 특정 Secret 상세/만료 | `oc get secret <name> -n <ns> -o jsonpath='{.data.tls\.crt}' \| base64 -d \| openssl x509 -noout -enddate` | 키/전체상세 선택 |
+| Node kubelet 인증서 | `oc debug node/<node> -- chroot /host ... openssl x509 -in kubelet-*-current.pem -noout -enddate` | |
+| API endpoint 인증서 | `echo \| openssl s_client -connect <host:port> -servername <host> \| openssl x509 -noout -dates` | |
+
+> 인증서 조회 방식은 Red Hat 지식베이스(Solution 3930291, 7028654)를 참고하여 재구성했습니다.
+
+### 5.9 OCP 관리 작업 (`oc adm` / `oc patch`)
+
+| 세부 명령 | 실행문 예시 | 비고 |
+|-----------|-------------|------|
+| 리소스 patch | `oc patch <종류> <이름> [-n <ns>] --type=<merge/json/strategic> -p '<patch>'` | 실행 전 확인 |
+| 노드 cordon/uncordon | `oc adm cordon <node>` / `oc adm uncordon <node>` | 실행 전 확인 |
+| 노드 drain | `oc adm drain <node> --ignore-daemonsets --delete-emptydir-data --force` | 실행 전 확인(Pod 축출) |
+| top node / top pod | `oc adm top node` / `oc adm top pod -n <ns>` | |
+
+### 5.10 노드 tcpdump / ss (`oc debug node`)
+
+5.2 노드 접속 실행에 다음이 추가되었습니다.
+
+| 세부 명령 | 실행문 예시 | 비고 |
+|-----------|-------------|------|
+| 노드 소켓/포트 상태(ss) | `oc debug node/<node> -- chroot /host ... ss -tulnp` | |
+| 노드 tcpdump | `oc debug node/<node> -- chroot /host ... tcpdump -i <iface> -nn -c <n> '<filter>'` | 실행 전 확인 |
+
+### 5.11 테스트 이미지 (busybox / nginx / toolbox)
+
+임시 테스트 Pod(라벨 `app=ocptools-test`)로 네트워크/DNS/HTTP를 검증합니다.
+
+| 세부 명령 | 실행문 예시 | 비고 |
+|-----------|-------------|------|
+| busybox 테스트 | `oc run ocptools-busybox --image=busybox --rm -it -- sh -c 'nslookup <target>; wget -qO- http://<target>'` | 일회성(--rm) |
+| nginx 테스트 | `oc run ocptools-nginx --image=nginx --port=80` 후 `oc exec ... curl localhost` | 정리 필요 |
+| toolbox(노드) | `oc debug node/<node> -- chroot /host toolbox <cmd>` | RHCOS 진단 |
+| 테스트 리소스 정리 | `oc delete pod -l app=ocptools-test -n <ns>` | 실행 전 확인 |
+
+### 5.12 Istio 서비스메시 (`istioctl`)
+
+| 세부 명령 | 실행문 예시 | 비고 |
+|-----------|-------------|------|
+| version | `istioctl version` | istioctl/컨트롤플레인 버전 |
+| proxy-status | `istioctl proxy-status` | sidecar 동기화 상태 |
+| proxy-config | `istioctl proxy-config <all/cluster/listener/route/...> <pod>.<ns>` | Envoy 설정 조회 |
+| analyze | `istioctl analyze [-n <ns> \| --all-namespaces]` | 구성 문제 진단 |
+| 직접 입력 | `istioctl <입력>` | 임의 하위 명령 |
+
+### 5.13 유틸리티 (crt merge / json merge / openssl)
+
+**복수 crt → ConfigMap** (CA bundle 생성/갱신)
+
+| 방식 | 실행문 예시 |
+|------|-------------|
+| 신규 생성 | `oc create configmap <name> -n <ns> --from-file=<key>=<merged.pem>` |
+| 갱신(apply) | `oc create configmap <name> ... --dry-run=client -o yaml \| oc apply -f -` |
+
+- 입력한 여러 crt 파일을 하나로 병합한 뒤 지정 key(예: `ca-bundle.crt`)로 ConfigMap을 만들거나 갱신합니다. (실행 전 확인)
+
+**복수 JSON → merged JSON** (jq)
+
+| 방식 | 실행문 예시 |
+|------|-------------|
+| 객체 깊은 병합(뒤 파일 우선) | `jq -s 'reduce .[] as $x ({}; . * $x)' a.json b.json > merged.json` |
+| 배열로 결합 | `jq -s '.' a.json b.json > merged.json` |
+| 얕은 병합 | `jq -s 'reduce .[] as $x ({}; . + $x)' a.json b.json > merged.json` |
+
+**openssl 사용법** (메뉴에서 선택 후 실행)
+
+| 항목 | 실행문 예시 |
+|------|-------------|
+| 인증서 상세 | `openssl x509 -in <crt> -text -noout` |
+| 만료일 | `openssl x509 -in <crt> -noout -enddate` |
+| subject/issuer | `openssl x509 -in <crt> -noout -subject -issuer` |
+| 원격 서버 인증서 | `echo \| openssl s_client -connect <host:port> -servername <host> \| openssl x509 -noout -dates` |
+| CSR 생성 | `openssl req -new -newkey rsa:2048 -nodes -keyout <key> -out <csr>` |
+| 자체서명 인증서 | `openssl req -x509 -newkey rsa:2048 -nodes -keyout <key> -out <crt> -days <n>` |
+| PFX→PEM | `openssl pkcs12 -in <pfx> -out <pem> -nodes` |
+| 지문(SHA256) | `openssl x509 -in <crt> -noout -fingerprint -sha256` |
+| key/crt 짝 확인 | `openssl x509 -noout -modulus -in <crt> \| openssl md5` 와 `openssl rsa -noout -modulus -in <key> \| openssl md5` 비교 |
+
 ---
 
 ## 6. 안전장치 (되돌리기 어려운 명령)
@@ -178,7 +261,11 @@ chmod +x ocptools.sh
 - 이미지 삭제: `podman rmi`
 - 레지스트리 태그 삭제: `DELETE .../manifests/<digest>`
 - NIC 활성화/비활성화: `ip link set <nic> up|down`
-- tcpdump 패킷 캡처: `sudo tcpdump ...` (루트 권한, 장시간 캡처 가능)
+- tcpdump 패킷 캡처: `sudo tcpdump ...` / 노드 tcpdump (루트 권한, 장시간 캡처 가능)
+- 리소스 patch: `oc patch ...`
+- 노드 cordon/uncordon/drain: `oc adm cordon|uncordon|drain <node>`
+- 테스트 리소스 정리: `oc delete pod -l app=ocptools-test`
+- CA bundle ConfigMap 생성/갱신: `oc create configmap ...` / `oc apply -f -`
 
 > **--resolve vs --connect-to 정리**
 > - `--resolve <HOST>:<PORT>:<ADDRESS>`: DNS 이름 해석만 바꿉니다. HOST를 지정 IP로 해석하되 접속 포트는 URL의 포트를 그대로 사용합니다. 커스텀 포트(예: 8081)로 접속하려면 `<PORT>`와 URL 포트를 모두 8081로 맞춰야 합니다. 여러 IP는 콤마로 나열할 수 있습니다.
@@ -275,3 +362,5 @@ h_hello()
 | v1.0 | 2026-08-16 | 최초 작성 | k.s.k & kiro |
 | v1.1 | 2026-08-16 | 카탈로그 전체목록 조회, tcpdump 추가, curl --resolve 보완 및 --connect-to 추가 | k.s.k & kiro |
 | v1.2 | 2026-09-07 | 레지스트리 주소 입력 시 기본 참고정보(DEFAULT_REGISTRY=ocprgst.bss.skt:5000) 제시 및 엔터 시 기본값 처리, 화면 출력 C_BOLD 통일(색상 정의는 유지) | k.s.k & kiro |
+| v1.3 | 2026-09-07 | 인증서 유효일자 조회(ocp_cert), Pod 이미지 정보 조회, OCP 관리작업(oc adm/patch: ocp_adm), 노드 tcpdump/ss, 테스트 이미지(busybox/toolbox/nginx: test_img) 추가 | k.s.k & kiro |
+| v1.4 | 2026-09-07 | istioctl(istio), 유틸리티(util) 추가: 복수 crt merge→ConfigMap 생성/patch, 복수 JSON merge(jq), openssl 사용법 | k.s.k & kiro |
