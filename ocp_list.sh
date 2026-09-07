@@ -30,6 +30,9 @@
 ##  1.3       2026.08.16       k.s.k & kiro     olm.maxOpenShiftVersion / olm.openshift.versions
 ##                                              기반 OCP 호환성 판정(업그레이드차단/호환범위밖) 추가,
 ##                                              속성 없으면 none 으로 치환 후 채널/semver 폴백
+##  1.4       2026.09.07       k.s.k & kiro     operator catalog txt 에 description 컬럼 추가,
+##                                              영향도 비교 표를 2단 헤더(OCP버전 / CHANNEL·MINVER·
+##                                              MAXVER·VERDICT)로 개선하여 가독성 향상
 ##
 ####################################################################################################
 
@@ -726,11 +729,12 @@ func_operator_catalog()
     echo "#   - DEFAULT_CHANNEL      : olm.package.defaultChannel"
     echo "#   - DEFAULT_CHANNEL_HEAD : 해당 채널 entries 중 다른 entry 의 replaces/skips 대상이"
     echo "#                            아닌 최신(semver 최대) 번들 = 채널 head(설치 시 기본 버전)"
+    echo "#   - DESCRIPTION          : olm.package.description (패키지 용도, 축약 표시)"
     echo "#"
-    printf "%-45s | %-22s | %s\n" "PACKAGE" "DEFAULT_CHANNEL" "DEFAULT_CHANNEL_HEAD(latest)"
-    printf -- "----------------------------------------------+------------------------+------------------------------\n"
+    printf "%-45s | %-22s | %-30s | %s\n" "PACKAGE" "DEFAULT_CHANNEL" "DEFAULT_CHANNEL_HEAD(latest)" "DESCRIPTION"
+    printf -- "----------------------------------------------+------------------------+--------------------------------+--------------------------------------------------\n"
 
-    # 패키지 목록과 defaultChannel 추출 (olm.package)
+    # 패키지 목록과 defaultChannel, description 추출 (olm.package)
     # 각 패키지의 defaultChannel head 는 해당 채널 entries 에서 계산
     jq -rs --arg hf "dummy" '
       ( [ .[] | select(.schema=="olm.package") ] ) as $pkgs
@@ -738,15 +742,18 @@ func_operator_catalog()
       | $pkgs[]
       | . as $p
       | ($chs[] | select(.package==$p.name and .name==$p.defaultChannel)) as $dch
-      | [$p.name, $p.defaultChannel, ($dch.entries // [])] | @json
+      | (($p.description // "") | gsub("[\r\n]+";" ") | .[0:200]) as $desc
+      | [$p.name, $p.defaultChannel, ($dch.entries // []), $desc] | @json
     ' "${json_file}" 2>/dev/null | while IFS= read -r rowjson; do
-        local pkg dch head
+        local pkg dch head desc
         pkg=$(echo "${rowjson}" | jq -r '.[0]')
         dch=$(echo "${rowjson}" | jq -r '.[1]')
         # entries 로부터 head 계산
         head=$(echo "${rowjson}" | jq -r ".[2] | {entries: .} | ${head_filter}" 2>/dev/null)
         [ -z "${head}" ] && head="-"
-        printf "%-45s | %-22s | %s\n" "${pkg}" "${dch}" "${head}"
+        desc=$(echo "${rowjson}" | jq -r '.[3]')
+        [ -z "${desc}" ] && desc="-"
+        printf "%-45s | %-22s | %-30s | %s\n" "${pkg}" "${dch}" "${head}" "${desc}"
       done | sort
 
     echo ""
@@ -1326,26 +1333,45 @@ func_analyze_upgrade()
       echo "# =============================================================================="
       echo "#"
       echo "# 판정(Verdict): 유지가능/업그레이드필요/채널변경필요/미지원(대안필요)/업그레이드차단/호환범위밖/확인필요"
-      echo "# 각 버전 셀 표기: [defaultChannel] min~max(head) maxOCP:X => Verdict"
+      echo "#"
+      echo "# 표 구성: 상단 헤더=OCP release 버전, 하단 서브헤더=CHANNEL/MINVER/MAXVER/VERDICT"
+      echo "#          각 Operator 행은 해당 OCP 버전 블록의 서브 항목에 값만 표시합니다."
       echo "#"
 
-      # 표 헤더
-      printf "%-38s | %-42s" "PACKAGE" "DESCRIPTION"
+      # ---- 2단 헤더 구성 -----------------------------------------------------------------------
+      # 컬럼 폭 정의 (서브 항목)
+      #   CHANNEL=20, MINVER=16, MAXVER=16, VERDICT=24  (한 OCP 버전 블록)
+      #   PACKAGE=38, DESCRIPTION=40, CURRENT=26
+      local w_ch=20 w_min=16 w_max=16 w_vd=24
+      local w_pkg=38 w_desc=40 w_curr=26
+      # 한 OCP 버전 블록의 전체 폭 = 4개 서브컬럼 + 3개 구분 공백
+      local blk_w=$(( w_ch + w_min + w_max + w_vd + 3 ))
       local cj
+
+      # (1단) 상위 헤더: OCP 버전을 블록 폭에 맞춰 표기
+      printf "%-${w_pkg}s | %-${w_desc}s" "" ""
       for (( cj=base_idx; cj<n; cj++ )); do
-        printf " | %-52s" "OCP ${VERS[${cj}]}"
+        printf " | %-${blk_w}s" "OCP ${VERS[${cj}]}"
       done
-      printf " | %-28s\n" "CURRENT(ch/csv)"
+      printf " | %-${w_curr}s\n" ""
+
+      # (2단) 하위 서브 헤더
+      printf "%-${w_pkg}s | %-${w_desc}s" "PACKAGE" "DESCRIPTION"
+      for (( cj=base_idx; cj<n; cj++ )); do
+        printf " | %-${w_ch}s %-${w_min}s %-${w_max}s %-${w_vd}s" "CHANNEL" "MINVERSION" "MAXVERSION" "VERDICT"
+      done
+      printf " | %-${w_curr}s\n" "CURRENT(ch/csv)"
 
       # 구분선
-      printf '%s' "---------------------------------------+-------------------------------------------"
+      _repeat_char() { local n="$1" c="${2:--}"; printf "%${n}s" "" | tr ' ' "${c}"; }
+      _repeat_char ${w_pkg}; printf -- "-+-"; _repeat_char ${w_desc}
       for (( cj=base_idx; cj<n; cj++ )); do
-        printf '%s' "+-----------------------------------------------------"
+        printf -- "-+-"; _repeat_char ${blk_w}
       done
-      printf '%s\n' "+-----------------------------"
+      printf -- "-+-"; _repeat_char ${w_curr}; printf "\n"
 
-      # 각 package 행
-      local pkg info dch minv maxv desc curr cch verdict cell
+      # ---- 각 package 행 -----------------------------------------------------------------------
+      local pkg info dch minv maxv desc curr cch verdict
       for pkg in "${PKGS[@]}"; do
         # 현재 설치 정보 (INSTALLED_INFO: channel|csv)
         curr=""; cch=""
@@ -1357,13 +1383,14 @@ func_analyze_upgrade()
         # description 은 첫 유효 버전에서 취득
         desc="-"
         local first_desc_done=0
-        # 각 버전 셀 문자열 구성
-        local -a cells=()
+        # 각 OCP 버전 블록의 서브컬럼 문자열(개행 구분 4항목)을 배열에 저장
+        local -a blocks=()
         for (( cj=base_idx; cj<n; cj++ )); do
           local cv="${VERS[${cj}]}"
           local jffile="${VER_JSON[${cv}]}"
           if [ -z "${jffile}" ]; then
-            cells+=( "N/A(카탈로그없음)" )
+            # 카탈로그 없음: 서브컬럼 전부 N/A 표기
+            blocks+=( "$(printf '%s\t%s\t%s\t%s' "-" "-" "-" "N/A(카탈로그없음)")" )
             continue
           fi
           # curr(설치버전 csv)를 전달하여 해당 번들 우선으로 maxOCP/support 추출
@@ -1381,22 +1408,28 @@ func_analyze_upgrade()
           # 대상 OCP 버전(cv)을 전달하여 maxOCP/support 기반 판정 포함
           verdict=$(verdict_for "${dch}" "${minv}" "${maxv}" "${curr}" "${cch}" "${maxocp}" "${osvers}" "${cv}")
           if [ "${dch}" = "NONE" ]; then
-            cells+=( "미지원(대안필요)" )
+            blocks+=( "$(printf '%s\t%s\t%s\t%s' "-" "-" "-" "미지원(대안필요)")" )
           else
-            cells+=( "[${dch}] ${minv}~${maxv} maxOCP:${maxocp} => ${verdict}" )
+            blocks+=( "$(printf '%s\t%s\t%s\t%s' "${dch}" "${minv}" "${maxv}" "${verdict}")" )
           fi
         done
 
-        # 행 출력
-        printf "%-38s | %-42s" "${pkg}" "${desc:0:42}"
-        for cell in "${cells[@]}"; do
-          printf " | %-52s" "${cell}"
+        # 행 출력: PACKAGE | DESCRIPTION | (각 OCP 블록의 4 서브컬럼) | CURRENT
+        printf "%-${w_pkg}s | %-${w_desc}s" "${pkg:0:${w_pkg}}" "${desc:0:${w_desc}}"
+        local b bc bmin bmax bvd
+        for b in "${blocks[@]}"; do
+          bc=$(echo "${b}"  | cut -f1)
+          bmin=$(echo "${b}" | cut -f2)
+          bmax=$(echo "${b}" | cut -f3)
+          bvd=$(echo "${b}"  | cut -f4)
+          printf " | %-${w_ch}s %-${w_min}s %-${w_max}s %-${w_vd}s" "${bc}" "${bmin}" "${bmax}" "${bvd}"
         done
-        printf " | %-28s\n" "${cch:--}/${curr:--}"
+        printf " | %-${w_curr}s\n" "${cch:--}/${curr:--}"
       done
 
       echo ""
-      echo "# ※ min~max: 대상 OCP 버전 카탈로그의 defaultChannel 최소버전 ~ head(최신버전)"
+      echo "# ※ CHANNEL/MINVERSION/MAXVERSION: 대상 OCP 버전 카탈로그의 defaultChannel 과 그 채널의"
+      echo "#    최소버전 ~ head(최신버전). VERDICT: 현재 설치버전 기준 판정."
       echo "# ※ CURRENT: 클러스터에 설치된 현재 채널/버전(csv). 미설치(수동입력)면 -/- 표기."
     } > "${out_file}"
 

@@ -4,8 +4,8 @@
 |------|------|
 | 프로그램 | `ocp_list.sh` |
 | 식별자 | `[ocpcatalog]` |
-| 문서버전 | v1.3 |
-| 작성일 | 2026-08-16 |
+| 문서버전 | v1.4 |
+| 작성일 | 2026-09-07 |
 | 작성자 | k.s.k & kiro |
 
 ---
@@ -97,7 +97,7 @@ q) 종료
   - 실행문 예: `opm render registry.redhat.io/redhat/redhat-operator-index:v4.22 > <index>.json`
 - 산출물
   - `<index>.json`: opm render 원본 스트림
-  - `<index>.txt`: 패키지별 **DEFAULT_CHANNEL**, **DEFAULT_CHANNEL_HEAD(최신 버전)** 표 + 요약
+  - `<index>.txt`: 패키지별 **DEFAULT_CHANNEL**, **DEFAULT_CHANNEL_HEAD(최신 버전)**, **DESCRIPTION(패키지 용도)** 표 + 요약
 
 ### 5.3 Operator 업그레이드 영향도 분석 (메뉴 3)
 
@@ -123,9 +123,21 @@ q) 종료
 
 | 컬럼 | 설명 |
 |------|------|
+표는 **2단 헤더**로 구성되어 가독성을 높입니다.
+
+- **1단(상위 헤더)**: `PACKAGE`, `DESCRIPTION`, 각 **OCP release 버전**, `CURRENT(ch/csv)`
+- **2단(하위 서브헤더)**: 각 OCP 버전 아래에 `CHANNEL`, `MINVERSION`, `MAXVERSION`, `VERDICT`
+
+각 Operator 행은 해당 OCP 버전 블록의 서브 항목(채널/최소/최대/판정)에 값만 표시하여, 어떤 버전에서 어떤 채널·버전 범위인지 한눈에 비교할 수 있습니다.
+
+| 컬럼 | 설명 |
+|------|------|
 | PACKAGE | Operator 패키지 이름 |
 | DESCRIPTION | 패키지 역할 간단 설명(카탈로그 description) |
-| OCP <버전> | 각 버전 셀: `[defaultChannel] min~max(head) maxOCP:X => Verdict` |
+| OCP <버전> > CHANNEL | 해당 OCP 버전 카탈로그의 defaultChannel |
+| OCP <버전> > MINVERSION | 해당 채널의 최소 버전 |
+| OCP <버전> > MAXVERSION | 해당 채널의 head(최신 버전) |
+| OCP <버전> > VERDICT | 현재 설치 버전 기준 판정 |
 | CURRENT(ch/csv) | 클러스터에 설치된 현재 채널/버전(csv). 미설치면 `-/-` |
 
 #### OCP 호환성 속성 (opm render 의 olm.bundle.properties 기반)
@@ -208,12 +220,14 @@ q) 종료
 #   - 유지가능         : 현재버전이 [min, max] 범위 내
 # ==============================================================================
 #
-PACKAGE            | DESCRIPTION            | OCP 4.20                             | OCP 4.21                             | OCP 4.22          | CURRENT(ch/csv)
--------------------+------------------------+--------------------------------------+--------------------------------------+-------------------+----------------
-cluster-logging    | Logging for OpenShift  | [stable-6.0] 6.0.0~6.0.3 maxOCP:none | [stable-6.1] 6.1.0~6.1.2 maxOCP:4.21 | 미지원(대안필요)   | stable-6.0/6.0.2
+                                       |                        | OCP 4.20                                      | OCP 4.21                                      | OCP 4.22                                      | 
+PACKAGE            | DESCRIPTION            | CHANNEL    MINVER  MAXVER  VERDICT             | CHANNEL    MINVER  MAXVER  VERDICT             | CHANNEL    MINVER  MAXVER  VERDICT             | CURRENT(ch/csv)
+-------------------+------------------------+-----------------------------------------------+-----------------------------------------------+-----------------------------------------------+----------------
+cluster-logging    | Logging for OpenShift  | stable-6.0 6.0.0   6.0.3   유지가능            | stable-6.1 6.1.0   6.1.2   업그레이드필요      | -          -       -       미지원(대안필요)    | stable-6.0/6.0.2
 ```
 
-위 예시에서 `OCP 4.22`로 갈 때 `maxOCP:4.21`이 선언되어 있으면 판정은 `업그레이드차단(maxOCP:4.21)`이 됩니다.
+- 상단 헤더는 OCP release 버전, 하단 서브헤더는 CHANNEL/MINVER/MAXVER/VERDICT로 구성됩니다.
+- 위 예시에서 `OCP 4.22`에 해당 package가 없으면 VERDICT는 `미지원(대안필요)`, `maxOCP`가 대상 OCP보다 낮으면 `업그레이드차단`이 표시됩니다.
 
 ---
 
@@ -244,3 +258,4 @@ cluster-logging    | Logging for OpenShift  | [stable-6.0] 6.0.0~6.0.3 maxOCP:no
 | v1.1 | 2026-08-16 | 영향도 분석 진입 시 클러스터 사용 여부 확인 + oc 로그인 사전 점검/가이드(재확인 루프) 추가 | k.s.k & kiro |
 | v1.2 | 2026-08-16 | JSON은 jq pretty-print 저장, TXT에 조회 명령어/판정 로직 기준 Information 섹션 추가 | k.s.k & kiro |
 | v1.3 | 2026-08-16 | olm.maxOpenShiftVersion/olm.openshift.versions 기반 호환성 판정(업그레이드차단/호환범위밖) 추가, 속성 없으면 none 폴백 | k.s.k & kiro |
+| v1.4 | 2026-09-07 | operator catalog txt에 DESCRIPTION 컬럼 추가, 영향도 비교 표를 2단 헤더(OCP버전 / CHANNEL·MINVER·MAXVER·VERDICT)로 개선 | k.s.k & kiro |

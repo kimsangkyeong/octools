@@ -64,3 +64,19 @@ gemini에게 버전 호환성 비교에 대해서 정리 요청했을 때는 olm
 - verdict_for: 우선순위 판정에 업그레이드차단(target>maxOCP), 호환범위밖(support 범위밖) 추가.
   두 속성이 none 이면 기존 채널/semver 로직으로 폴백.
 - 표 셀에 maxOCP 병기, Information/판정기준 섹션 보강. ocp_list.sh v1.3, 매뉴얼 v1.3.
+
+---
+
+=============== [ocpcatalog] #005 2026-09-07
+[작업자: Kiro]
+
+operator catalog 조회 결과 txt 파일에 package 용도를 알 수 있도록 .description 항목 추가. operator 버전 호환성 비교 출력 시 Header 를 ocp release 버전과 서브 항목 2단으로 구성. ocp version 별로 channel/minVersion/maxVersion 항목을 관리하고 operator 별 값은 해당 항목 값만 표시하여 인지성 향상. 수정이력은 현재 시간으로 세팅.
+
+[반영 내용]
+- func_operator_catalog: <index>.txt 표에 DESCRIPTION 컬럼 추가(olm.package.description, 70자 축약).
+- func_analyze_upgrade: check-operator-version.txt 표를 2단 헤더로 재구성.
+  * 1단: PACKAGE, DESCRIPTION, 각 OCP release 버전, CURRENT
+  * 2단: 각 OCP 버전 아래 CHANNEL/MINVERSION/MAXVERSION/VERDICT 서브컬럼
+  * 각 operator 행은 서브 항목에 값만 표시(고정폭 정렬).
+- 수정이력: 현재 시각(2026.09.07) 기준으로 ocp_list.sh v1.4, 매뉴얼 v1.4 반영.
+- bash -n 통과, 표 레이아웃 렌더링 검증 완료(임시 테스트 후 삭제).
