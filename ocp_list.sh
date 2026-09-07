@@ -30,6 +30,9 @@
 ##  1.3       2026.08.16       k.s.k & kiro     olm.maxOpenShiftVersion / olm.openshift.versions
 ##                                              기반 OCP 호환성 판정(업그레이드차단/호환범위밖) 추가,
 ##                                              속성 없으면 none 으로 치환 후 채널/semver 폴백
+##  1.4       2026.09.07       k.s.k & kiro     operator catalog txt 에 DESCRIPTION 컬럼 추가,
+##                                              영향도 비교 표를 2단 헤더(OCP버전 / CHANNEL·MINVERSION·
+##                                              MAXVERSION·VERDICT)로 개선하여 가독성 향상
 ##
 ####################################################################################################
 
