@@ -70,6 +70,7 @@ gemini에게 버전 호환성 비교에 대해서 정리 요청했을 때는 olm
 =============== [ocpcatalog] #005 2026-09-07
 [작업자: Kiro]
 
+<<<<<<< HEAD
 operator catalog 조회 결과 txt 파일에 package 용도를 알 수 있도록 .description 항목 추가. operator 버전 호환성 비교 출력 시 Header 를 ocp release 버전과 서브 항목 2단으로 구성. ocp version 별로 channel/minVersion/maxVersion 항목을 관리하고 operator 별 값은 해당 항목 값만 표시하여 인지성 향상. 수정이력은 현재 시간으로 세팅.
 
 [반영 내용]
@@ -80,3 +81,13 @@ operator catalog 조회 결과 txt 파일에 package 용도를 알 수 있도록
   * 각 operator 행은 서브 항목에 값만 표시(고정폭 정렬).
 - 수정이력: 현재 시각(2026.09.07) 기준으로 ocp_list.sh v1.4, 매뉴얼 v1.4 반영.
 - bash -n 통과, 표 레이아웃 렌더링 검증 완료(임시 테스트 후 삭제).
+=======
+색상 코드는 그대로 유지하되 출력은 C_BOLD 로 수정해줘.
+
+[반영 내용]
+- ocp_list.sh: 색상 코드 정의(C_RED/C_GREEN/C_YELLOW/C_BLUE/C_CYAN/C_WHITE/C_BOLD)는 유지.
+- ocp_list.sh: 출력에 쓰이던 모든 색상 참조를 C_BOLD 로 통일(타이틀 배너/실행문/메뉴 헤더/프롬프트/경고·오류 메시지).
+  기존 C_BOLD 조합 라인은 중복 없이 정리. bash -n 통과, 출력 경로에 남은 색상 참조 없음/중복 C_BOLD 없음 확인.
+- docs/ocp_list_manual.md: '8. 화면 출력(색상) 처리' 섹션 추가(이후 섹션 재번호), 변경이력/문서버전 v1.4 갱신.
+- ocp_list.sh v1.4, 매뉴얼 v1.4.
+>>>>>>> 97e32b59074e66f86bc5323c68bfc9ff543fe5b5

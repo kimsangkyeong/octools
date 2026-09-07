@@ -33,6 +33,14 @@
 ##                                              세팅하여 인증 유실 근본 방지. --authfile 은 선택 옵션.
 ##  1.4       2026.08.16       k.s.k & kiro     --authfile 옵션 완전 제거(XDG_RUNTIME_DIR 방식으로 일원화),
 ##                                              인증 파일 부재 안내 메시지 수정
+##  1.5       2026.09.07       k.s.k & kiro     (1) 정상 완료 후 cluster-resources 후처리 추가:
+##                                                  - release 등: signature-configmap.yaml 을 .origin 백업 후
+##                                                    name 값에 -<disk_path 마지막 폴더명> 접미사(버전별 유니크)
+##                                                  - additionalimages-nosignature 인자: itms*.yaml 을 .origin
+##                                                    백업 후 name 값에 -nosignature 접미사
+##                                                  (itms-*/idms-* 중복 허용분, Operator catalog index 는 미처리)
+##                                              (2) 화면 출력을 C_BOLD 로 통일(색상 정의는 유지, 가독성 문제 회피)
+##                                              (3) 누락된 print_warn 헬퍼 추가
 ##
 ####################################################################################################
 
@@ -153,9 +161,12 @@ EOF
 ##  Function Name : print_error / print_info / print_ok
 ##  Description : 메시지 출력 헬퍼.
 ######################################################################################################
-print_error() { printf "${C_RED}[ERROR] %s${C_RESET}\n" "$1" >&2; }
-print_info()  { printf "${C_CYAN}%s${C_RESET}\n" "$1"; }
-print_ok()    { printf "${C_GREEN}%s${C_RESET}\n" "$1"; }
+## 화면 출력은 색상이 안 보이는 문제 회피를 위해 C_BOLD 로 통일한다.
+## (색상 코드 정의는 유지하되, 필요 시 수동으로 색상으로 되돌릴 수 있도록 함)
+print_error() { printf "${C_BOLD}[ERROR] %s${C_RESET}\n" "$1" >&2; }
+print_info()  { printf "${C_BOLD}%s${C_RESET}\n" "$1"; }
+print_ok()    { printf "${C_BOLD}%s${C_RESET}\n" "$1"; }
+print_warn()  { printf "${C_BOLD}[WARN] %s${C_RESET}\n" "$1" >&2; }
 
 ######################################################################################################
 ##  Function Name : is_valid_repo
@@ -182,7 +193,7 @@ select_repo_interactive()
   print_info "저장할 private registry 저장소를 선택하세요."
   print_repo_list
   echo ""
-  printf "  ${C_WHITE}번호 선택 (취소: q): ${C_RESET}"
+  printf "  ${C_BOLD}번호 선택 (취소: q): ${C_RESET}"
   local sel
   read -r sel || return 1
   case "${sel}" in
@@ -341,7 +352,7 @@ print_information()
   [ -z "${ocm_ver}" ] && ocm_ver="(버전 조회 실패)"
 
   echo ""
-  printf "${C_BOLD}${C_CYAN}==================== [Information] ====================${C_RESET}\n"
+  printf "${C_BOLD}==================== [Information] ====================${C_RESET}\n"
   printf "  %-18s : %s\n" "도구 이름" "${TOOL_NAME}"
   printf "  %-18s : %s\n" "oc-mirror 버전" "${ocm_ver}"
   printf "  %-18s : %s\n" "config(yaml)" "${CONFIG_FILE}"
@@ -352,8 +363,8 @@ print_information()
   printf "  %-18s : %s\n" "인증(auth.json)" "${XDG_RUNTIME_DIR_FIXED}/containers/auth.json"
   printf "  %-18s : %s\n" "REGISTRY_AUTH_FILE" "이 명령 실행 환경에서 unset 처리"
   printf "  %-18s : %s\n" "실행 명령어" ""
-  printf "${C_BOLD}${C_YELLOW}    %s${C_RESET}\n" "${run_cmd}"
-  printf "${C_BOLD}${C_CYAN}======================================================${C_RESET}\n"
+  printf "${C_BOLD}    %s${C_RESET}\n" "${run_cmd}"
+  printf "${C_BOLD}======================================================${C_RESET}\n"
   echo ""
 }
 
@@ -376,6 +387,113 @@ run_mirror()
     ( unset REGISTRY_AUTH_FILE; export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR_FIXED}"; eval "${run_cmd}" )
   fi
   return $?
+}
+
+######################################################################################################
+##  Function Name : rewrite_yaml_name_suffix
+##  Description : 지정한 YAML 파일의 첫 번째 metadata.name 값 뒤에 접미사(suffix)를 붙인다.
+##                수정 전 원본을 <파일>.origin 으로 백업하며, 이미 .origin 백업이 있으면
+##                (재실행으로 간주) 건너뛴다(중복 append 방지).
+##                metadata: 블록 아래의 첫 번째 "name:" 만 변경한다.
+##  information : input $1=yaml 파일 경로, $2=붙일 접미사 / output 0=처리(또는 스킵), 1=오류
+######################################################################################################
+rewrite_yaml_name_suffix()
+{
+  local yaml_file="$1"
+  local suffix="$2"
+  local backup="${yaml_file}.origin"
+
+  [ -f "${yaml_file}" ] || { print_warn "대상 파일이 없어 건너뜁니다: ${yaml_file}"; return 0; }
+
+  # 이미 백업이 존재하면 이전에 처리한 것으로 간주하여 재처리하지 않는다(중복 append 방지).
+  if [ -f "${backup}" ]; then
+    print_warn "이미 처리됨(백업 존재): ${backup} -> 재처리 건너뜀"
+    return 0
+  fi
+
+  # 원본 백업
+  if ! cp -p "${yaml_file}" "${backup}" 2>/dev/null; then
+    print_error "백업 생성 실패: ${backup}"
+    return 1
+  fi
+
+  # metadata: 블록 아래 첫 번째 name: 값에만 접미사를 붙인다.
+  # in_meta: metadata: 진입 여부, done: 이미 한 번 수정했는지 여부
+  if ! awk -v sfx="${suffix}" '
+    BEGIN { in_meta=0; done=0 }
+    {
+      if (done==0 && $0 ~ /^[[:space:]]*metadata:[[:space:]]*$/) { in_meta=1; print; next }
+      if (done==0 && in_meta==1 && $0 ~ /^[[:space:]]*name:[[:space:]]*/) {
+        # 앞쪽 들여쓰기 + "name:" 뒤 공백을 보존하고, 값 뒤에 접미사를 붙인다.
+        # 값에 감싸는 따옴표가 있을 수 있으나 release/itms 케이스는 평문 name 이므로 단순 치환.
+        line=$0
+        # name: 이후의 값 부분만 추출
+        head=line
+        sub(/name:[[:space:]]*.*/, "", head)          # 들여쓰기(name: 앞) 보존
+        val=line
+        sub(/^[[:space:]]*name:[[:space:]]*/, "", val) # 값만 추출
+        printf "%sname: %s%s\n", head, val, sfx
+        done=1
+        in_meta=0
+        next
+      }
+      print
+    }
+  ' "${backup}" > "${yaml_file}"; then
+    print_error "name 수정 실패: ${yaml_file} (백업에서 복구하세요: ${backup})"
+    return 1
+  fi
+
+  print_ok "수정 완료: ${yaml_file} (name 에 '${suffix}' 접미사 추가, 백업: ${backup})"
+  return 0
+}
+
+######################################################################################################
+##  Function Name : post_process_cluster_resources
+##  Description : oc-mirror 정상 완료 후, <disk_path>/working-dir/cluster-resources 아래
+##                생성된 YAML 의 name 중복 방지 후처리를 수행한다.
+##                - disk_path 의 마지막 폴더명이 "additionalimages-nosignature" 인 경우(개별 이미지):
+##                    itms*.yaml 을 itms*.yaml.origin 으로 백업 후 name 에 "-nosignature" 접미사 부여.
+##                - 그 외(release 등):
+##                    signature-configmap.yaml 을 .origin 으로 백업 후 name 에
+##                    "-<disk_path 마지막 폴더명>" 접미사 부여(버전별 유니크 처리).
+##                  (itms-*/idms-* 는 중복 허용이므로 손대지 않음. Operator 는 catalog index 처리로 조치 불필요)
+##  information : input none(전역 DISK_PATH 사용) / output 0=완료(부분 스킵 포함), 1=오류
+######################################################################################################
+post_process_cluster_resources()
+{
+  # 마지막 폴더명 추출 (trailing slash 제거 후 basename)
+  local disk_norm last_dir cr_dir
+  disk_norm="${DISK_PATH%/}"
+  last_dir="$(basename "${disk_norm}")"
+  cr_dir="${disk_norm}/working-dir/cluster-resources"
+
+  if [ ! -d "${cr_dir}" ]; then
+    print_warn "cluster-resources 디렉토리가 없어 후처리를 건너뜁니다: ${cr_dir}"
+    return 0
+  fi
+
+  echo ""
+  print_info "cluster-resources 후처리를 시작합니다: ${cr_dir}"
+
+  local rc=0
+
+  if [ "${last_dir}" = "additionalimages-nosignature" ]; then
+    # 개별 이미지(무서명) 케이스: itms*.yaml 에 -nosignature 접미사
+    local f matched=0
+    for f in "${cr_dir}"/itms*.yaml; do
+      [ -e "${f}" ] || continue
+      matched=1
+      rewrite_yaml_name_suffix "${f}" "-nosignature" || rc=1
+    done
+    [ "${matched}" -eq 0 ] && print_warn "itms*.yaml 파일을 찾지 못했습니다: ${cr_dir}"
+  else
+    # release 등 일반 케이스: signature-configmap.yaml 에 -<마지막폴더명> 접미사
+    local sig="${cr_dir}/signature-configmap.yaml"
+    rewrite_yaml_name_suffix "${sig}" "-${last_dir}" || rc=1
+  fi
+
+  return ${rc}
 }
 
 # ======<<<< Function Registration Area (End) >>>>=================================================
@@ -409,6 +527,8 @@ RC=$?
 echo ""
 if [ ${RC} -eq 0 ]; then
   print_ok "완료되었습니다. (registry: docker://${REGISTRY_HOST}/${REPO})"
+  # 7) 정상 완료 후 cluster-resources 후처리 (name 중복 방지)
+  post_process_cluster_resources || print_warn "cluster-resources 후처리 중 일부 오류가 발생했습니다. 위 메시지를 확인하세요."
 else
   print_error "oc-mirror 실행이 실패했습니다. (종료코드: ${RC})"
 fi

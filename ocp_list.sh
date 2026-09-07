@@ -30,9 +30,6 @@
 ##  1.3       2026.08.16       k.s.k & kiro     olm.maxOpenShiftVersion / olm.openshift.versions
 ##                                              기반 OCP 호환성 판정(업그레이드차단/호환범위밖) 추가,
 ##                                              속성 없으면 none 으로 치환 후 채널/semver 폴백
-##  1.4       2026.09.07       k.s.k & kiro     operator catalog txt 에 description 컬럼 추가,
-##                                              영향도 비교 표를 2단 헤더(OCP버전 / CHANNEL·MINVER·
-##                                              MAXVER·VERDICT)로 개선하여 가독성 향상
 ##
 ####################################################################################################
 
@@ -128,7 +125,7 @@ print_title()
   local title="$1"
   clear
   print_line "="
-  printf "${C_BOLD}${C_BLUE}  %s${C_RESET}\n" "${title}"
+  printf "${C_BOLD}  %s${C_RESET}\n" "${title}"
   print_line "="
   echo ""
 }
@@ -138,10 +135,10 @@ print_title()
 ##  Description : 정보/경고/오류 메시지를 색상으로 출력한다.
 ##  information : input $1=메시지 / output 색상 메시지 (warn/error 는 stderr)
 ######################################################################################################
-print_info()  { printf "${C_CYAN}  %s${C_RESET}\n" "$1"; }
-print_warn()  { printf "${C_YELLOW}  [WARN] %s${C_RESET}\n" "$1" >&2; }
-print_error() { printf "${C_RED}  [ERROR] %s${C_RESET}\n" "$1" >&2; }
-print_ok()    { printf "${C_GREEN}  %s${C_RESET}\n" "$1"; }
+print_info()  { printf "${C_BOLD}  %s${C_RESET}\n" "$1"; }
+print_warn()  { printf "${C_BOLD}  [WARN] %s${C_RESET}\n" "$1" >&2; }
+print_error() { printf "${C_BOLD}  [ERROR] %s${C_RESET}\n" "$1" >&2; }
+print_ok()    { printf "${C_BOLD}  %s${C_RESET}\n" "$1"; }
 
 ######################################################################################################
 ##  Function Name : pause_enter
@@ -151,7 +148,7 @@ print_ok()    { printf "${C_GREEN}  %s${C_RESET}\n" "$1"; }
 pause_enter()
 {
   echo ""
-  printf "  ${C_CYAN}[Enter] 계속...${C_RESET}"
+  printf "  ${C_BOLD}[Enter] 계속...${C_RESET}"
   read -r _dummy || return 0
 }
 
@@ -169,9 +166,9 @@ ask_input()
   local input
 
   if [ -n "${defval}" ]; then
-    printf "  ${C_WHITE}%s [기본: %s]: ${C_RESET}" "${prompt}" "${defval}"
+    printf "  ${C_BOLD}%s [기본: %s]: ${C_RESET}" "${prompt}" "${defval}"
   else
-    printf "  ${C_WHITE}%s: ${C_RESET}" "${prompt}"
+    printf "  ${C_BOLD}%s: ${C_RESET}" "${prompt}"
   fi
   read -r input || input=""
   [ -z "${input}" ] && input="${defval}"
@@ -187,7 +184,7 @@ confirm_run()
 {
   local msg="${1:-계속하시겠습니까?}"
   local ans
-  printf "${C_YELLOW}  %s (y/N): ${C_RESET}" "${msg}"
+  printf "${C_BOLD}  %s (y/N): ${C_RESET}" "${msg}"
   read -r ans || ans=""
   case "${ans}" in
     y|Y|yes|YES) return 0 ;;
@@ -203,7 +200,7 @@ confirm_run()
 show_exec_cmd()
 {
   echo ""
-  printf "${C_BOLD}${C_YELLOW}[실행문: %s]${C_RESET}\n" "$1"
+  printf "${C_BOLD}[실행문: %s]${C_RESET}\n" "$1"
   print_line "-"
 }
 
@@ -272,11 +269,11 @@ check_oc_login()
   while true; do
     echo ""
     print_error "oc 로그인이 되어 있지 않습니다. 이 기능은 클러스터 접속이 필요합니다."
-    printf "${C_YELLOW}  아래 방법으로 먼저 로그인하세요 (별도 터미널 가능):${C_RESET}\n"
+    printf "${C_BOLD}  아래 방법으로 먼저 로그인하세요 (별도 터미널 가능):${C_RESET}\n"
     echo "    oc login https://<api-server>:6443 -u <user> -p <pass>"
     echo "    또는  oc login --token=<token> --server=https://<api-server>:6443"
     echo ""
-    printf "  ${C_WHITE}[r] 로그인 후 재확인   [s] 건너뛰기(클러스터 미사용)   [b] 취소: ${C_RESET}"
+    printf "  ${C_BOLD}[r] 로그인 후 재확인   [s] 건너뛰기(클러스터 미사용)   [b] 취소: ${C_RESET}"
     read -r ans || return 1
     case "${ans}" in
       r|R)
@@ -370,13 +367,13 @@ render_paged_menu()
     if [ -z "${ltext}" ] && [ -z "${rtext}" ]; then
       continue
     fi
-    printf "${C_WHITE}%-${col_width}s${C_RESET}| ${C_WHITE}%s${C_RESET}\n" "${ltext}" "${rtext}"
+    printf "${C_BOLD}%-${col_width}s${C_RESET}| ${C_BOLD}%s${C_RESET}\n" "${ltext}" "${rtext}"
   done
 
   echo ""
   print_line "-"
-  printf "${C_CYAN}  페이지 %d/%d  |  [n]다음 [p]이전 [b]뒤로 [q]종료${C_RESET}\n" "$(( page + 1 ))" "${total_pages}"
-  [ -n "${extra_help}" ] && printf "${C_CYAN}  %s${C_RESET}\n" "${extra_help}"
+  printf "${C_BOLD}  페이지 %d/%d  |  [n]다음 [p]이전 [b]뒤로 [q]종료${C_RESET}\n" "$(( page + 1 ))" "${total_pages}"
+  [ -n "${extra_help}" ] && printf "${C_BOLD}  %s${C_RESET}\n" "${extra_help}"
   print_line "-"
 }
 
@@ -397,7 +394,7 @@ select_from_list()
   while true; do
     render_paged_menu "${title}" "${page}"
     echo ""
-    printf "  ${C_WHITE}선택(번호): ${C_RESET}"
+    printf "  ${C_BOLD}선택(번호): ${C_RESET}"
     if ! read -r input; then return 2; fi
     case "${input}" in
       q|Q) return 2 ;;
@@ -435,7 +432,7 @@ select_multi_from_list()
   while true; do
     render_paged_menu "${title}" "${page}" "${help}"
     echo ""
-    printf "  ${C_WHITE}선택: ${C_RESET}"
+    printf "  ${C_BOLD}선택: ${C_RESET}"
     if ! read -r input; then return 2; fi
 
     case "${input}" in
@@ -657,8 +654,8 @@ func_operator_catalog()
   # ---- index 선택 (목록) 또는 직접 입력 (요구사항6) --------------------------------------------
   local index_name=""
   echo ""
-  printf "  ${C_CYAN}Operator 카탈로그 index 지정: [1] 목록에서 선택  [2] 직접 입력${C_RESET}\n"
-  printf "  ${C_WHITE}선택: ${C_RESET}"
+  printf "  ${C_BOLD}Operator 카탈로그 index 지정: [1] 목록에서 선택  [2] 직접 입력${C_RESET}\n"
+  printf "  ${C_BOLD}선택: ${C_RESET}"
   local ich
   read -r ich || ich="1"
   if [ "${ich}" = "2" ]; then
@@ -1190,7 +1187,7 @@ func_analyze_upgrade()
   echo "  클러스터에 연결하면 설치된 Operator와 현재 버전을 자동으로 조회합니다."
   echo "  연결하지 않으면(오프라인) package/버전을 수동으로 입력합니다."
   echo ""
-  printf "  ${C_WHITE}클러스터에 연결하여 진행할까요? [Y] 예(로그인 점검)  [n] 아니오(수동): ${C_RESET}"
+  printf "  ${C_BOLD}클러스터에 연결하여 진행할까요? [Y] 예(로그인 점검)  [n] 아니오(수동): ${C_RESET}"
   local use_ans
   read -r use_ans || use_ans="Y"
   case "${use_ans}" in
@@ -1473,7 +1470,7 @@ func_show_config()
   echo ""
   echo "  [1] WORKDIR 변경   [2] REG_BASE 변경   [3] ANALYZE_INDEX 변경   [b] 뒤로"
   echo ""
-  printf "  ${C_WHITE}선택: ${C_RESET}"
+  printf "  ${C_BOLD}선택: ${C_RESET}"
   local ch
   read -r ch || return 0
   case "${ch}" in
@@ -1510,24 +1507,24 @@ main_menu()
   while true; do
     clear
     print_line "="
-    printf "${C_BOLD}${C_BLUE}  ocp_list - OCP Release/Operator 카탈로그 & 업그레이드 영향도 분석${C_RESET}\n"
+    printf "${C_BOLD}  ocp_list - OCP Release/Operator 카탈로그 & 업그레이드 영향도 분석${C_RESET}\n"
     print_line "="
     echo ""
     echo "  [저장경로] ${WORKDIR}"
     echo ""
-    printf "${C_BOLD}${C_CYAN}  [ 카탈로그 조회 ]${C_RESET}\n"
+    printf "${C_BOLD}  [ 카탈로그 조회 ]${C_RESET}\n"
     echo "    1) OCP Release 목록 조회        (release.json / release.txt)"
     echo "    2) Operator 카탈로그(index) 조회 (<index>.json / <index>.txt)"
     echo ""
-    printf "${C_BOLD}${C_CYAN}  [ 업그레이드 영향도 분석 ]${C_RESET}\n"
+    printf "${C_BOLD}  [ 업그레이드 영향도 분석 ]${C_RESET}\n"
     echo "    3) Operator 업그레이드 영향도 분석 (check-operator-version.txt)"
     echo ""
-    printf "${C_BOLD}${C_CYAN}  [ 기타 ]${C_RESET}\n"
+    printf "${C_BOLD}  [ 기타 ]${C_RESET}\n"
     echo "    4) 설정 보기/변경"
     echo "    q) 종료"
     echo ""
     print_line "-"
-    printf "  ${C_WHITE}메뉴 선택: ${C_RESET}"
+    printf "  ${C_BOLD}메뉴 선택: ${C_RESET}"
     if ! read -r input; then do_exit; fi
 
     case "${input}" in

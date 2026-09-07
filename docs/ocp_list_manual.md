@@ -239,7 +239,16 @@ cluster-logging    | Logging for OpenShift  | stable-6.0 6.0.0   6.0.3   유지�
 
 ---
 
-## 8. 주의사항
+## 8. 화면 출력(색상) 처리
+
+색상 코드 정의(`C_RED`, `C_GREEN`, `C_YELLOW`, `C_BLUE`, `C_CYAN`, `C_WHITE`, `C_BOLD`)는 유지하되, 일부 터미널에서 글씨가 안 보이는 문제를 피하기 위해 **화면 출력은 모두 `C_BOLD`(굵게)로 통일** 되어 있습니다.
+
+- 대상: 타이틀 배너, 실행문 표시, 메뉴/프롬프트, 경고/오류 메시지 등 모든 출력.
+- 나중에 특정 메시지를 색상으로 표시하고 싶으면, 해당 `printf` 의 `${C_BOLD}` 를 원하는 색상 변수(예: `${C_GREEN}`)로 수동 변경하면 됩니다.
+
+---
+
+## 9. 주의사항
 
 | 항목 | 설명 |
 |------|------|
@@ -258,4 +267,8 @@ cluster-logging    | Logging for OpenShift  | stable-6.0 6.0.0   6.0.3   유지�
 | v1.1 | 2026-08-16 | 영향도 분석 진입 시 클러스터 사용 여부 확인 + oc 로그인 사전 점검/가이드(재확인 루프) 추가 | k.s.k & kiro |
 | v1.2 | 2026-08-16 | JSON은 jq pretty-print 저장, TXT에 조회 명령어/판정 로직 기준 Information 섹션 추가 | k.s.k & kiro |
 | v1.3 | 2026-08-16 | olm.maxOpenShiftVersion/olm.openshift.versions 기반 호환성 판정(업그레이드차단/호환범위밖) 추가, 속성 없으면 none 폴백 | k.s.k & kiro |
+<<<<<<< HEAD
 | v1.4 | 2026-09-07 | operator catalog txt에 DESCRIPTION 컬럼 추가, 영향도 비교 표를 2단 헤더(OCP버전 / CHANNEL·MINVER·MAXVER·VERDICT)로 개선 | k.s.k & kiro |
+=======
+| v1.4 | 2026-09-07 | 화면 출력을 C_BOLD 로 통일(색상 정의는 유지, 가독성 문제 회피. 필요 시 수동으로 색상 변경) | k.s.k & kiro |
+>>>>>>> 97e32b59074e66f86bc5323c68bfc9ff543fe5b5

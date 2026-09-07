@@ -81,3 +81,33 @@ authfile 에 /data/pullsecret/merged-pullsecrete.json 을 변수로 처리했지
 - validate_env 인증 점검을 XDG 경로 단일 체크로 단순화하고 안내 메시지를 요청대로 수정.
 - docs/d2m_manual.md 의 --authfile 관련 항목 전부 정리(옵션표/내부설정표/예시/인증섹션/문제해결).
 - d2m.sh v1.4, 매뉴얼 v1.4.
+
+---
+
+=============== [d2m] #006 2026-09-07
+[작업자: Kiro]
+
+d2m.sh 로 private registry 에 저장하면 oc-mirror 가 <저장디렉토리>/working-dir/cluster-resources 에 여러 yaml 을 생성한다.
+release 는 버전별로 ImageSetConfiguration 을 만들 예정이라 signature-configmap.yaml 의 name 을 유니크하게 처리해야 함
+(itms-*/idms-* 는 중복 허용, Operator 는 catalog index 처리라 조치 불필요).
+- release 관련 d2m.sh 정상 완료 시: signature-configmap.yaml -> signature-configmap.yaml.origin 백업 후,
+  name 값을 <기존문자열>-<d2m.sh 인자로 받은 파일 디렉토리의 맨 마지막 폴더명> 으로 수정.
+- 개별 이미지(additionalimages-nosignature 폴더를 인자로 수행) 케이스: itms*.yaml -> itms*.yaml.origin 백업 후,
+  name 값을 <기존문자열>-nosignature 로 수정.
+또한 색상 정의는 유지하되 화면 출력은 C_BOLD 로 표시(글씨 안 보이는 문제 회피, 필요 시 수동 변경).
+
+[확인/결정 사항]
+- 처리 분기: disk_path 의 마지막 폴더명이 additionalimages-nosignature 이면 itms 처리, 그 외에는 signature-configmap 처리.
+- 마지막 폴더명: trailing slash 제거 후 basename 으로 추출.
+- name 수정: metadata: 블록 아래 첫 번째 name: 만 수정(들여쓰기/namespace 등 다른 필드 보존).
+- itms*.yaml 은 각 파일별로 -nosignature 부여. 이미 .origin 백업이 있으면 재실행으로 간주해 건너뜀(중복 append 방지).
+
+[반영 내용]
+- d2m.sh: print_warn 헬퍼 추가(기존 validate_env 에서 호출하나 미정의였던 버그도 해결).
+- d2m.sh: print_error/print_info/print_ok, 저장소 선택 프롬프트, Information 블록 출력을 C_BOLD 로 통일(색상 정의는 유지).
+- d2m.sh: rewrite_yaml_name_suffix() 추가 - .origin 백업 + awk 로 metadata 첫 name 에 접미사 부여, 백업 존재 시 스킵.
+- d2m.sh: post_process_cluster_resources() 추가 - disk_path 마지막 폴더명으로 분기하여 후처리 수행.
+- d2m.sh: 미러링 성공(RC=0) 후 post_process_cluster_resources 호출(후처리 오류는 경고만, 종료코드 미영향).
+- 테스트: release / additionalimages-nosignature(trailing slash) / 재실행(스킵) 3 케이스 정상 확인, bash -n 통과.
+- docs/d2m_manual.md: '9. cluster-resources 후처리', '10. 화면 출력(색상) 처리' 섹션 추가, 이후 섹션 재번호, 변경이력/문서버전 v1.5 갱신.
+- d2m.sh v1.5, 매뉴얼 v1.5.

@@ -30,6 +30,8 @@
 ##  1.0       2026.08.16       k.s.k & kiro     First Created
 ##  1.1       2026.08.16       k.s.k & kiro     --authfile 옵션 추가(인터넷망 pull secret 지정).
 ##                                              미지정 시 XDG_RUNTIME_DIR 세팅 + auth.json 참조.
+##  1.2       2026.09.07       k.s.k & kiro     화면 출력을 C_BOLD 로 통일(색상 정의는 유지, 가독성 문제 회피).
+##                                              필요 시 개별 printf 의 C_BOLD 를 색상 변수로 수동 변경.
 ##
 ####################################################################################################
 
@@ -122,10 +124,12 @@ EOF
 ##  Function Name : print_error / print_info / print_ok
 ##  Description : 메시지 출력 헬퍼.
 ######################################################################################################
-print_error() { printf "${C_RED}[ERROR] %s${C_RESET}\n" "$1" >&2; }
-print_warn()  { printf "${C_YELLOW}[WARN] %s${C_RESET}\n" "$1" >&2; }
-print_info()  { printf "${C_CYAN}%s${C_RESET}\n" "$1"; }
-print_ok()    { printf "${C_GREEN}%s${C_RESET}\n" "$1"; }
+## 화면 출력은 색상이 안 보이는 문제 회피를 위해 C_BOLD 로 통일한다.
+## (색상 코드 정의는 유지하되, 필요 시 수동으로 색상으로 되돌릴 수 있도록 함)
+print_error() { printf "${C_BOLD}[ERROR] %s${C_RESET}\n" "$1" >&2; }
+print_warn()  { printf "${C_BOLD}[WARN] %s${C_RESET}\n" "$1" >&2; }
+print_info()  { printf "${C_BOLD}%s${C_RESET}\n" "$1"; }
+print_ok()    { printf "${C_BOLD}%s${C_RESET}\n" "$1"; }
 
 ######################################################################################################
 ##  Function Name : parse_args
@@ -278,7 +282,7 @@ print_information()
   [ -z "${ocm_ver}" ] && ocm_ver="(버전 조회 실패)"
 
   echo ""
-  printf "${C_BOLD}${C_CYAN}==================== [Information] ====================${C_RESET}\n"
+  printf "${C_BOLD}==================== [Information] ====================${C_RESET}\n"
   printf "  %-16s : %s\n" "도구 이름" "${TOOL_NAME}"
   printf "  %-16s : %s\n" "oc-mirror 버전" "${ocm_ver}"
   printf "  %-16s : %s\n" "config(yaml)" "${CONFIG_FILE}"
@@ -297,8 +301,8 @@ print_information()
   fi
   printf "  %-16s : %s\n" "REGISTRY_AUTH_FILE" "이 명령 실행 환경에서 unset 처리"
   printf "  %-16s : %s\n" "실행 명령어" ""
-  printf "${C_BOLD}${C_YELLOW}    %s${C_RESET}\n" "${run_cmd}"
-  printf "${C_BOLD}${C_CYAN}======================================================${C_RESET}\n"
+  printf "${C_BOLD}    %s${C_RESET}\n" "${run_cmd}"
+  printf "${C_BOLD}======================================================${C_RESET}\n"
   echo ""
 }
 
