@@ -64,3 +64,17 @@ gemini에게 버전 호환성 비교에 대해서 정리 요청했을 때는 olm
 - verdict_for: 우선순위 판정에 업그레이드차단(target>maxOCP), 호환범위밖(support 범위밖) 추가.
   두 속성이 none 이면 기존 채널/semver 로직으로 폴백.
 - 표 셀에 maxOCP 병기, Information/판정기준 섹션 보강. ocp_list.sh v1.3, 매뉴얼 v1.3.
+
+---
+
+=============== [ocpcatalog] #005 2026-09-07
+[작업자: Kiro]
+
+색상 코드는 그대로 유지하되 출력은 C_BOLD 로 수정해줘.
+
+[반영 내용]
+- ocp_list.sh: 색상 코드 정의(C_RED/C_GREEN/C_YELLOW/C_BLUE/C_CYAN/C_WHITE/C_BOLD)는 유지.
+- ocp_list.sh: 출력에 쓰이던 모든 색상 참조를 C_BOLD 로 통일(타이틀 배너/실행문/메뉴 헤더/프롬프트/경고·오류 메시지).
+  기존 C_BOLD 조합 라인은 중복 없이 정리. bash -n 통과, 출력 경로에 남은 색상 참조 없음/중복 C_BOLD 없음 확인.
+- docs/ocp_list_manual.md: '8. 화면 출력(색상) 처리' 섹션 추가(이후 섹션 재번호), 변경이력/문서버전 v1.4 갱신.
+- ocp_list.sh v1.4, 매뉴얼 v1.4.
