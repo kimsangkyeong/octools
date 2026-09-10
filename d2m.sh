@@ -70,11 +70,8 @@ REGISTRY_HOST="ocprgst.bss.skt:5000"
 # 저장소 확대/변경 시 이 배열만 수정하면 된다.
 REPO_LIST=(
   "ocp4/release"
-  "ocp4/operator"
+  "ocp4/olm"
   "ocp4/infra"
-  "ocp5/release"
-  "ocp5/operator"
-  "ocp5/infra"
 )
 
 # private registry 인증:

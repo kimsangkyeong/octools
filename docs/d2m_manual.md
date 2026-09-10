@@ -72,10 +72,10 @@ chmod +x d2m.sh
 | 저장소 |
 |--------|
 | `ocp4/release` |
-| `ocp4/operator` |
+| `ocp4/olm` |
 | `ocp4/infra` |
 | `ocp5/release` |
-| `ocp5/operator` |
+| `ocp5/olm` |
 | `ocp5/infra` |
 
 - **목록 선택**: `repo` 인자를 생략하면 번호로 선택합니다.

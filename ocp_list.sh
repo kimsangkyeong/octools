@@ -33,6 +33,10 @@
 ##  1.4       2026.09.07       k.s.k & kiro     operator catalog txt 에 DESCRIPTION 컬럼 추가,
 ##                                              영향도 비교 표를 2단 헤더(OCP버전 / CHANNEL·MINVERSION·
 ##                                              MAXVERSION·VERDICT)로 개선하여 가독성 향상
+##  1.5       2026.09.10       k.s.k & kiro     DESCRIPTION 이 비어있던 문제 수정: olm.package.description
+##                                              이 없으면 defaultChannel head 번들의 olm.csv.metadata
+##                                              (value.description / annotations.description)를 폴백 사용
+##                                              (operator catalog txt / 영향도 비교표 공통 적용)
 ##
 ####################################################################################################
 
@@ -729,21 +733,43 @@ func_operator_catalog()
     echo "#   - DEFAULT_CHANNEL      : olm.package.defaultChannel"
     echo "#   - DEFAULT_CHANNEL_HEAD : 해당 채널 entries 중 다른 entry 의 replaces/skips 대상이"
     echo "#                            아닌 최신(semver 최대) 번들 = 채널 head(설치 시 기본 버전)"
-    echo "#   - DESCRIPTION          : olm.package.description (패키지 용도, 축약 표시)"
+    echo "#   - DESCRIPTION          : olm.package.description 우선, 없으면 defaultChannel head 번들의"
+    echo "#                            olm.csv.metadata(value.description 또는 annotations.description)"
     echo "#"
     printf "%-45s | %-22s | %-30s | %s\n" "PACKAGE" "DEFAULT_CHANNEL" "DEFAULT_CHANNEL_HEAD(latest)" "DESCRIPTION"
     printf -- "----------------------------------------------+------------------------+--------------------------------+--------------------------------------------------\n"
 
-    # 패키지 목록과 defaultChannel, description 추출 (olm.package)
-    # 각 패키지의 defaultChannel head 는 해당 채널 entries 에서 계산
+    # 패키지 목록과 defaultChannel, description 추출
+    #   - defaultChannel head 는 해당 채널 entries 에서 계산
+    #   - description 은 olm.package.description 이 비어있는 카탈로그가 많아
+    #     defaultChannel head 번들의 olm.csv.metadata 값(value.description /
+    #     value.annotations.description)을 폴백으로 사용한다.
     jq -rs --arg hf "dummy" '
-      ( [ .[] | select(.schema=="olm.package") ] ) as $pkgs
-      | ( [ .[] | select(.schema=="olm.channel") ] ) as $chs
+      # 채널 entries 로부터 head(다른 entry 의 replaces/skips 대상이 아닌 최신) 번들명 계산
+      def head_name($ents):
+        ( $ents | map(.replaces) | map(select(.!=null)) ) as $rep
+        | ( $ents | map(.skips // []) | add // [] ) as $skp
+        | ( $rep + $skp ) as $covered
+        | ( [ $ents[].name | select( . as $n | ($covered | index($n)) | not ) ] ) as $heads
+        | ( if ($heads|length)>0 then ($heads | sort_by(.) | last)
+            else ( $ents | map(.name) | sort_by(.) | (if length>0 then last else "" end) ) end );
+      # 번들명으로 olm.csv.metadata 의 description 추출
+      def csv_desc($all; $bname):
+        ( [ $all[] | select(.schema=="olm.bundle" and .name==$bname) ] | first ) as $b
+        | ( ($b.properties // []) | map(select(.type=="olm.csv.metadata")) | first ) as $m
+        | if $m == null then "" else ( $m.value.description // $m.value.annotations.description // "" ) end;
+      . as $all
+      | ( [ $all[] | select(.schema=="olm.package") ] ) as $pkgs
+      | ( [ $all[] | select(.schema=="olm.channel") ] ) as $chs
       | $pkgs[]
       | . as $p
       | ($chs[] | select(.package==$p.name and .name==$p.defaultChannel)) as $dch
-      | (($p.description // "") | gsub("[\r\n]+";" ") | .[0:200]) as $desc
-      | [$p.name, $p.defaultChannel, ($dch.entries // []), $desc] | @json
+      | ( ($dch.entries // []) ) as $ents
+      | ( head_name($ents) ) as $hn
+      | ( ($p.description // "") ) as $pdesc
+      | ( if ($pdesc | length) > 0 then $pdesc else csv_desc($all; $hn) end ) as $descraw
+      | ( ($descraw // "") | gsub("[\r\n]+";" ") | gsub("\\s+";" ") | .[0:200] ) as $desc
+      | [$p.name, $p.defaultChannel, $ents, $desc] | @json
     ' "${json_file}" 2>/dev/null | while IFS= read -r rowjson; do
         local pkg dch head desc
         pkg=$(echo "${rowjson}" | jq -r '.[0]')
@@ -973,7 +999,8 @@ get_pkg_info_for_version()
 
   # jq 로 한 번에 계산:
   #  - defaultChannel: olm.package.defaultChannel
-  #  - description   : olm.package.description (없으면 첫 줄 축약)
+  #  - description   : olm.package.description 우선, 없으면 head 번들의
+  #                    olm.csv.metadata(value.description / annotations.description) 폴백 후 축약
   #  - default 채널 entries 로 minVer(semver 최소), maxVer(head) 계산
   #  - head 번들 및 (있으면) curr 번들의 properties 에서
   #      olm.maxOpenShiftVersion / olm.openshift.versions 추출 (없으면 "none")
@@ -987,6 +1014,11 @@ get_pkg_info_for_version()
                   elif type=="object" then (.version // .versions // (tostring))
                   else tostring end )
         end;
+    # 번들명으로 olm.csv.metadata 의 description 추출 (olm.package.description 폴백용)
+    def csv_desc($all; $bname):
+      ( [ $all[] | select(.schema=="olm.bundle" and .name==$bname) ] | first ) as $b
+      | ( ($b.properties // []) | map(select(.type=="olm.csv.metadata")) | first ) as $m
+      | if $m == null then "" else ( $m.value.description // $m.value.annotations.description // "" ) end;
     . as $all
     | ( [ $all[] | select(.schema=="olm.package" and .name==$pkg) ] | first ) as $p
     | if $p == null then
@@ -1001,7 +1033,10 @@ get_pkg_info_for_version()
         | ( $rep + $skp ) as $covered
         | ( [ $ents[].name | select( . as $n | ($covered | index($n)) | not ) ] ) as $heads
         | ( if ($heads|length)>0 then ($heads | sort_by(.) | last) else ($names | sort_by(.) | (if length>0 then last else "-" end)) end ) as $maxv
-        | ( ($p.description // "") | gsub("[\r\n]+";" ") | .[0:60] ) as $desc
+        # description: olm.package.description 우선, 없으면 head 번들의 olm.csv.metadata 폴백
+        | ( ($p.description // "") ) as $pdesc
+        | ( if ($pdesc | length) > 0 then $pdesc else csv_desc($all; $maxv) end ) as $descraw
+        | ( ($descraw // "") | gsub("[\r\n]+";" ") | gsub("\\s+";" ") | .[0:60] ) as $desc
         # curr 번들 이름 매칭: curr 가 채널 entries 에 존재하면 그 이름, 아니면 head($maxv)
         | ( if ($curr != "" and ($names | index($curr))) then $curr else $maxv end ) as $target_bundle
         | ( $all | prop($target_bundle; "olm.maxOpenShiftVersion") ) as $maxocp

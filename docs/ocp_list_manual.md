@@ -4,8 +4,8 @@
 |------|------|
 | 프로그램 | `ocp_list.sh` |
 | 식별자 | `[ocpcatalog]` |
-| 문서버전 | v1.4 |
-| 작성일 | 2026-09-07 |
+| 문서버전 | v1.5 |
+| 작성일 | 2026-09-10 |
 | 작성자 | k.s.k & kiro |
 
 ---
@@ -98,6 +98,7 @@ q) 종료
 - 산출물
   - `<index>.json`: opm render 원본 스트림
   - `<index>.txt`: 패키지별 **DEFAULT_CHANNEL**, **DEFAULT_CHANNEL_HEAD(최신 버전)**, **DESCRIPTION(패키지 용도)** 표 + 요약
+    - DESCRIPTION 은 `olm.package.description` 을 우선 사용하고, 비어 있으면 defaultChannel head 번들의 `olm.csv.metadata`(`value.description` → `value.annotations.description` 순)를 폴백으로 사용합니다.
 
 ### 5.3 Operator 업그레이드 영향도 분석 (메뉴 3)
 
@@ -133,7 +134,7 @@ q) 종료
 | 컬럼 | 설명 |
 |------|------|
 | PACKAGE | Operator 패키지 이름 |
-| DESCRIPTION | 패키지 역할 간단 설명(카탈로그 description) |
+| DESCRIPTION | 패키지 역할 간단 설명. `olm.package.description` 우선, 없으면 head 번들의 `olm.csv.metadata`(value.description / annotations.description) 폴백 |
 | OCP <버전> > CHANNEL | 해당 OCP 버전 카탈로그의 defaultChannel |
 | OCP <버전> > MINVERSION | 해당 채널의 최소 버전 |
 | OCP <버전> > MAXVERSION | 해당 채널의 head(최신 버전) |
@@ -267,8 +268,6 @@ cluster-logging    | Logging for OpenShift  | stable-6.0 6.0.0   6.0.3   유지�
 | v1.1 | 2026-08-16 | 영향도 분석 진입 시 클러스터 사용 여부 확인 + oc 로그인 사전 점검/가이드(재확인 루프) 추가 | k.s.k & kiro |
 | v1.2 | 2026-08-16 | JSON은 jq pretty-print 저장, TXT에 조회 명령어/판정 로직 기준 Information 섹션 추가 | k.s.k & kiro |
 | v1.3 | 2026-08-16 | olm.maxOpenShiftVersion/olm.openshift.versions 기반 호환성 판정(업그레이드차단/호환범위밖) 추가, 속성 없으면 none 폴백 | k.s.k & kiro |
-<<<<<<< HEAD
 | v1.4 | 2026-09-07 | operator catalog txt에 DESCRIPTION 컬럼 추가, 영향도 비교 표를 2단 헤더(OCP버전 / CHANNEL·MINVER·MAXVER·VERDICT)로 개선 | k.s.k & kiro |
-=======
 | v1.4 | 2026-09-07 | 화면 출력을 C_BOLD 로 통일(색상 정의는 유지, 가독성 문제 회피. 필요 시 수동으로 색상 변경) | k.s.k & kiro |
->>>>>>> 97e32b59074e66f86bc5323c68bfc9ff543fe5b5
+| v1.5 | 2026-09-10 | DESCRIPTION 이 비어있던 문제 수정: olm.package.description 이 없으면 defaultChannel head 번들의 olm.csv.metadata(value.description / annotations.description)를 폴백 사용 (catalog txt / 영향도 비교표 공통) | k.s.k & kiro |
